@@ -31,20 +31,13 @@
 #endif
 
 #include "miscadmin.h"
+#include "portability/mem.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 
 
 typedef key_t IpcMemoryKey;		/* shared memory key passed to shmget(2) */
 typedef int IpcMemoryId;		/* shared memory ID returned by shmget(2) */
-
-#define IPCProtection	(0600)	/* access/modify by user only */
-
-#ifdef SHM_SHARE_MMU			/* use intimate shared memory on Solaris */
-#define PG_SHMAT_FLAGS			SHM_SHARE_MMU
-#else
-#define PG_SHMAT_FLAGS			0
-#endif
 
 
 unsigned long UsedShmemSegID = 0;
@@ -170,7 +163,7 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 						 "memory configuration.",
 						 (unsigned long) size, NBuffers, MaxBackends) : 0,
 				 (shmget_errno == ENOSPC) ?
-				 errhint("This error does *not* mean that you have run out of disk space. "
+				 errhint("This error does *not* mean that you have run out of disk space.  "
 						 "It occurs either if all available shared memory IDs have been taken, "
 						 "in which case you need to raise the SHMMNI parameter in your kernel, "
 		  "or because the system's overall limit for shared memory has been "
@@ -440,7 +433,7 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port)
 	UsedShmemSegAddr = memAddress;
 	UsedShmemSegID = (unsigned long) NextShmemSegID;
 
-	return hdr;
+		return hdr;
 }
 
 #ifdef EXEC_BACKEND

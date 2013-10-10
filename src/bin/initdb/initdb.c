@@ -221,7 +221,7 @@ static void setlocales(void);
 static void usage(const char *progname);
 
 #ifdef WIN32
-static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo);
+static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo);
 #endif
 
 
@@ -261,12 +261,12 @@ do { \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
-#define PG_CMD_PRINTF3(fmt, arg1, arg2, arg3) \
-		do { \
-			if (fprintf(cmdfd, fmt, arg1, arg2, arg3) < 0 || fflush(cmdfd) < 0) \
-				output_failed = true, output_errno = errno; \
-		} while (0)
-		
+#define PG_CMD_PRINTF3(fmt, arg1, arg2, arg3)		\
+do { \
+	if (fprintf(cmdfd, fmt, arg1, arg2, arg3) < 0 || fflush(cmdfd) < 0) \
+		output_failed = true, output_errno = errno; \
+} while (0)
+
 #define PG_CMD_PRINTF4(fmt, arg1, arg2, arg3, arg4) \
 	do { \
 		if (fprintf(cmdfd, fmt, arg1, arg2, arg3, arg4) < 0 || fflush(cmdfd) < 0) \
@@ -622,7 +622,7 @@ popen_check(const char *command, const char *mode)
 		fprintf(stderr, _("%s: could not execute command \"%s\": %s\n"),
 				progname, command, strerror(errno));
 	return cmdfd;
-}
+	}
 
 /* source stolen from FreeBSD /src/bin/mkdir/mkdir.c and adapted */
 
@@ -636,7 +636,7 @@ popen_check(const char *command, const char *mode)
  */
 static int
 mkdir_p(char *path, mode_t omode)
-{
+	{
 	struct stat sb;
 	mode_t		numask,
 				oumask;
@@ -663,17 +663,17 @@ mkdir_p(char *path, mode_t omode)
 		else if (p[1] == ':' &&
 				 ((p[0] >= 'a' && p[0] <= 'z') ||
 				  (p[0] >= 'A' && p[0] <= 'Z')))
-		{
+	{
 			/* local drive */
 			p += 2;
-		}
 	}
+}
 #endif
 
 	if (p[0] == '/')			/* Skip leading '/'. */
 		++p;
 	for (first = 1, last = 0; !last; ++p)
-	{
+{
 		if (p[0] == '\0')
 			last = 1;
 		else if (p[0] != '/')
@@ -682,8 +682,8 @@ mkdir_p(char *path, mode_t omode)
 		if (!last && p[1] == '\0')
 			last = 1;
 		if (first)
-		{
-			/*
+	{
+	/*
 			 * POSIX 1003.2: For each dir operand that does not name an
 			 * existing directory, effects equivalent to those caused by the
 			 * following command shall occcur:
@@ -693,12 +693,12 @@ mkdir_p(char *path, mode_t omode)
 			 *
 			 * We change the user's umask and then restore it, instead of
 			 * doing chmod's.
-			 */
+	 */
 			oumask = umask(0);
 			numask = oumask & ~(S_IWUSR | S_IXUSR);
 			(void) umask(numask);
 			first = 0;
-		}
+}
 		if (last)
 			(void) umask(oumask);
 
@@ -706,23 +706,23 @@ mkdir_p(char *path, mode_t omode)
 		if (stat(path, &sb) == 0)
 		{
 			if (!S_ISDIR(sb.st_mode))
-			{
+{
 				if (last)
 					errno = EEXIST;
-				else
+	else
 					errno = ENOTDIR;
 				retval = 1;
 				break;
-			}
-		}
+	}
+	}
 		else if (mkdir(path, last ? omode : S_IRWXU | S_IRWXG | S_IRWXO) < 0)
-		{
+	{
 			retval = 1;
 			break;
-		}
+	}
 		if (!last)
 			*p = '/';
-	}
+}
 	if (!first && !last)
 		(void) umask(oumask);
 	return retval;
@@ -1098,16 +1098,16 @@ check_input(char *path)
 					_("%s: file \"%s\" does not exist\n"), progname, path);
 			fprintf(stderr,
 					_("This might mean you have a corrupted installation or identified\n"
-					  "the wrong directory with the invocation option -L.\n"));
+					"the wrong directory with the invocation option -L.\n"));
 		}
 		else
 		{
 			fprintf(stderr,
-					_("%s: could not access file \"%s\": %s\n"), progname, path,
-					  strerror(errno));
+				 _("%s: could not access file \"%s\": %s\n"), progname, path,
+					strerror(errno));
 			fprintf(stderr,
 					_("This might mean you have a corrupted installation or identified\n"
-					  "the wrong directory with the invocation option -L.\n"));
+					"the wrong directory with the invocation option -L.\n"));
 		}
 		exit(1);
 	}
@@ -1116,8 +1116,8 @@ check_input(char *path)
 		fprintf(stderr,
 				_("%s: file \"%s\" is not a regular file\n"), progname, path);
 		fprintf(stderr,
-				_("This might mean you have a corrupted installation or identified\n"
-				  "the wrong directory with the invocation option -L.\n"));
+		_("This might mean you have a corrupted installation or identified\n"
+		  "the wrong directory with the invocation option -L.\n"));
 		exit(1);
 	}
 }
@@ -1300,7 +1300,7 @@ test_config_settings(void)
 		{
 			n_buffers = test_buffs;
 			break;
-		}
+	}
 	}
 	if (i == bufslen)
 	{
@@ -1339,31 +1339,31 @@ setup_config(void)
 
 	if ((n_buffers * (BLCKSZ / 1024)) % 1024 == 0)
 		conflines = add_assignment(conflines, "shared_buffers", "%dMB",
-								   (n_buffers * (BLCKSZ / 1024)) / 1024);
+				 (n_buffers * (BLCKSZ / 1024)) / 1024);
 	else
 		conflines = add_assignment(conflines, "shared_buffers", "%dkB",
-								   n_buffers * (BLCKSZ / 1024));
+				 n_buffers * (BLCKSZ / 1024));
 
 	conflines = add_assignment(conflines, "max_fsm_pages", "%d", n_fsm_pages);
 
 	/* Upd comment to document the default port configured by --with-pgport */
 	if (DEF_PGPORT != 5432)
 	{
-		snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
-		conflines = replace_token(conflines, "#port = 5432", repltok);
+	snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);
+	conflines = replace_token(conflines, "#port = 5432", repltok);
 	}
 
 	conflines = add_assignment(conflines, "lc_messages", "'%s'",
-							   escape_quotes(lc_messages));
+			 escape_quotes(lc_messages));
 
 	conflines = add_assignment(conflines, "lc_monetary", "'%s'",
-							   escape_quotes(lc_monetary));
+			 escape_quotes(lc_monetary));
 
 	conflines = add_assignment(conflines, "lc_numeric", "'%s'",
-							   escape_quotes(lc_numeric));
+			 escape_quotes(lc_numeric));
 
 	conflines = add_assignment(conflines, "lc_time", "'%s'",
-							   escape_quotes(lc_time));
+			 escape_quotes(lc_time));
 
 	switch (locale_date_order(lc_time))
 	{
@@ -1438,8 +1438,8 @@ setup_config(void)
 		if (err != 0 ||
 			getaddrinfo("::1", NULL, &hints, &gai_result) != 0)
 			conflines = replace_token(conflines,
-									  "host    all         all         ::1",
-									  "#host    all         all         ::1");
+							   "host    all             all             ::1",
+							 "#host    all             all             ::1");
 		if (err != 0 ||
 			getaddrinfo("fe80::1", NULL, &hints, &gai_result) != 0)
 			conflines = replace_token(conflines,
@@ -1449,8 +1449,8 @@ setup_config(void)
 #else							/* !HAVE_IPV6 */
 	/* If we didn't compile IPV6 support at all, always comment it out */
 	conflines = replace_token(conflines,
-							  "host    all         all         ::1",
-							  "#host    all         all         ::1");
+							  "host    all             all             ::1",
+							  "#host    all             all             ::1");
 #endif   /* HAVE_IPV6 */
 
 	/* Replace default authentication methods */
@@ -2179,8 +2179,8 @@ setup_cdb_schema(void)
 	 * Now execute each script.
 	 */
 	for (i = 0; i < nscripts; i++)
-	{
-		PG_CMD_DECL;
+{
+	PG_CMD_DECL;
 		char	  **line;
 		char	  **lines;
 		char	   *path;
@@ -2238,7 +2238,7 @@ setup_gp_persistent_tables(void)
 			 backend_output);
 
 	PG_CMD_OPEN;
-	
+
 	PG_CMD_PRINTF1("SELECT gp_persistent_build_db(%s);\n",
 				   (gIsFileRepMirrored  ? "true" : "false"));
 
@@ -2649,7 +2649,7 @@ parse_long(const char *value, bool blckszUnit, const char* optname)
 
         endptr += 2;
         val = (long)(m * val / BLCKSZ);
-	}
+}
 
     /* error if extra trailing chars */
     if (endptr[0])
@@ -2671,7 +2671,7 @@ err:
 
 
 #ifdef WIN32
-typedef		BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
+typedef BOOL (WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_ATTRIBUTES, DWORD, PLUID_AND_ATTRIBUTES, DWORD, PSID_AND_ATTRIBUTES, PHANDLE);
 
 #define DISABLE_MAX_PRIVILEGE	0x1
 
@@ -2684,7 +2684,7 @@ typedef		BOOL(WINAPI * __CreateRestrictedToken) (HANDLE, DWORD, DWORD, PSID_AND_
  * NOT execute anything.
  */
 static int
-CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
+CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo)
 {
 	BOOL		b;
 	STARTUPINFO si;
@@ -2752,20 +2752,20 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
 	}
 
 #ifndef __CYGWIN__
-    AddUserToTokenDacl(restrictedToken);
+	AddUserToTokenDacl(restrictedToken);
 #endif
 
 	if (!CreateProcessAsUser(restrictedToken,
-						NULL,
-						cmd,
-						NULL,
-						NULL,
-						TRUE,
-						CREATE_SUSPENDED,
-						NULL,
-						NULL,
-						&si,
-						processInfo))
+							 NULL,
+							 cmd,
+							 NULL,
+							 NULL,
+							 TRUE,
+							 CREATE_SUSPENDED,
+							 NULL,
+							 NULL,
+							 &si,
+							 processInfo))
 
 	{
 		fprintf(stderr, "CreateProcessAsUser failed: %lu\n", GetLastError());
@@ -2795,7 +2795,7 @@ usage(const char *progname)
 			 "                            in the respective category (default taken from\n"
 			 "                            environment)\n"));
 	printf(_("  --is_filerep_mirrored=yes|no whether or not this db directory will be mirrored by file replication\n"));
-	printf(_("  --no-locale               equivalent to --locale=C\n"));
+	printf(_("      --no-locale           equivalent to --locale=C\n"));
 	printf(_("  -T, --text-search-config=CFG\n"
 		 "                            default text search configuration\n"));
 	printf(_("  -X, --xlogdir=XLOGDIR     location for the transaction log directory\n"));
@@ -2879,6 +2879,7 @@ main(int argc, char *argv[])
 		"pg_xlog",
 		"pg_xlog/archive_status",
 		"pg_clog",
+		"pg_dynshmem",
 		"pg_changetracking",
 		"pg_subtrans",
 		"pg_twophase",
@@ -2941,7 +2942,7 @@ main(int argc, char *argv[])
             optname = "?!?";
 
 		switch (c)
-		{
+{
 			case 'A':
 				authmethod = xstrdup(optarg);
 				break;
@@ -3022,7 +3023,7 @@ main(int argc, char *argv[])
                 else if ( strcmp("no", optarg) == 0  )
                     gIsFileRepMirrored = false;
                 else
-                {
+	{
                     fprintf(stderr, "Invalid value for is_filerep_mirrored\n");
                     fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 						progname);
@@ -3037,13 +3038,13 @@ main(int argc, char *argv[])
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 						progname);
 				exit(1);
-		}
 	}
+}
 
 
 	/* Non-option argument specifies data directory */
 	if (optind < argc)
-	{
+{
 		pg_data = xstrdup(argv[optind]);
 		optind++;
 	}
@@ -3060,8 +3061,8 @@ main(int argc, char *argv[])
 	if (pwprompt && pwfilename)
 	{
 		fprintf(stderr, _("%s: password prompt and password file cannot be specified together\n"), progname);
-		exit(1);
-	}
+	exit(1);
+}
 
 	if (authmethod == NULL || !strlen(authmethod))
 	{
@@ -3087,7 +3088,7 @@ main(int argc, char *argv[])
 		 * Kerberos methods not listed because they are not supported over
 		 * local connections and are rejected in hba.c
 		 */
-	{
+{
 		fprintf(stderr, _("%s: unrecognized authentication method \"%s\"\n"),
 				progname, authmethod);
 		exit(1);
@@ -3118,9 +3119,9 @@ main(int argc, char *argv[])
 					  "will reside.  Do this with either the invocation option -D or the\n"
 					  "environment variable PGDATA.\n"),
 					progname);
-			exit(1);
-		}
+		exit(1);
 	}
+}
 
 	pg_data_native = pg_data;
 	canonicalize_path(pg_data);
@@ -3225,7 +3226,7 @@ main(int argc, char *argv[])
 	{
 		fprintf(stderr, _("%s: could not determine valid short version string\n"), progname);
 		exit(1);
-	}
+}
 
 	effective_user = get_id();
 	if (strlen(username) == 0)
@@ -3248,7 +3249,7 @@ main(int argc, char *argv[])
 	set_info_version();
 
 	if (show_setting || debug)
-	{
+{
 		fprintf(stderr,
 				"VERSION=%s\n"
 				"PGDATA=%s\nshare_path=%s\nPGPATH=%s\n"
@@ -3333,7 +3334,7 @@ main(int argc, char *argv[])
 					progname, lc_ctype, pg_encoding_to_char(ctype_enc));
 			fprintf(stderr,
 				  _("Encoding %s is not allowed as a server-side encoding.\n"
-					"Rerun %s with a different locale selection.\n"),
+				"Rerun %s with a different locale selection.\n"),
 					pg_encoding_to_char(ctype_enc), progname);
 			exit(1);
 		}
@@ -3350,7 +3351,7 @@ main(int argc, char *argv[])
 		int			ctype_enc;
 
 		encodingid = get_encoding_id(encoding);
-		user_enc = atoi(encodingid);
+	user_enc = atoi(encodingid);
 
 		ctype_enc = pg_get_encoding_from_locale(lc_ctype);
 
@@ -3369,9 +3370,9 @@ main(int argc, char *argv[])
 			  || user_enc == PG_UTF8
 #endif
 			  ))
-		{
+	{
 			fprintf(stderr, _("%s: encoding mismatch\n"), progname);
-			fprintf(stderr,
+		fprintf(stderr,
 			   _("The encoding you selected (%s) and the encoding that the\n"
 			  "selected locale uses (%s) do not match.  This would lead to\n"
 			"misbehavior in various character string processing functions.\n"
@@ -3381,8 +3382,8 @@ main(int argc, char *argv[])
 					pg_encoding_to_char(ctype_enc),
 					progname);
 			exit(1);
-		}
 	}
+}
 
 	if (strlen(default_text_search_config) == 0)
 	{
@@ -3479,11 +3480,11 @@ main(int argc, char *argv[])
 			fprintf(stderr,
 					_("%s: directory \"%s\" exists but is not empty\n"),
 					progname, pg_data);
-			fprintf(stderr,
-					_("If you want to create a new database system, either remove or empty\n"
-					  "the directory \"%s\" or run %s\n"
-					  "with an argument other than \"%s\".\n"),
-					pg_data, progname, pg_data);
+				fprintf(stderr,
+						_("If you want to create a new database system, either remove or empty\n"
+						  "the directory \"%s\" or run %s\n"
+						  "with an argument other than \"%s\".\n"),
+						pg_data, progname, pg_data);
 			exit(1);			/* no further message needed */
 
 		default:
@@ -3548,10 +3549,10 @@ main(int argc, char *argv[])
 				fprintf(stderr,
 						_("%s: directory \"%s\" exists but is not empty\n"),
 						progname, xlog_dir);
-				fprintf(stderr,
-						_("If you want to store the transaction log there, either\n"
-						  "remove or empty the directory \"%s\".\n"),
-						xlog_dir);
+					fprintf(stderr,
+							_("If you want to store the transaction log there, either\n"
+							  "remove or empty the directory \"%s\".\n"),
+							xlog_dir);
 				exit_nicely();
 
 			default:
@@ -3576,7 +3577,7 @@ main(int argc, char *argv[])
 		fprintf(stderr, _("%s: symlinks are not supported on this platform"));
 		exit_nicely();
 #endif
-	}
+}
 
 	/* Create required subdirectories */
 	printf(_("creating subdirectories ... "));
@@ -3605,15 +3606,15 @@ main(int argc, char *argv[])
 		sprintf(backend_options, backend_options_format,
 			    ((gIsFileRepMirrored  ? "true" : "false")));
 
-		/* Bootstrap template1 */
+	/* Bootstrap template1 */
 		bootstrap_template1(short_version);
 
-		/*
-		 * Make the per-database PG_VERSION for template1 only after init'ing it
-		 */
+	/*
+	 * Make the per-database PG_VERSION for template1 only after init'ing it
+	 */
 		set_short_version(short_version, "base/1");
 
-		/* Create the stuff we don't need to use bootstrap mode for */
+	/* Create the stuff we don't need to use bootstrap mode for */
 
 		/*
 		 * Must be the first thing we do on template1 to make sure we capture all
@@ -3621,33 +3622,33 @@ main(int argc, char *argv[])
 		 */
 		setup_gp_persistent_tables();
 
-		setup_auth();
-		if (pwprompt || pwfilename)
-			get_set_pwd();
+	setup_auth();
+	if (pwprompt || pwfilename)
+		get_set_pwd();
 
-		setup_depend();
+	setup_depend();
 
-		setup_sysviews();
+	setup_sysviews();
 
-		setup_description();
+	setup_description();
 
-		setup_conversion();
+	setup_conversion();
 
-		setup_dictionary();
+	setup_dictionary();
 
-		setup_privileges();
+	setup_privileges();
 
-		setup_schema();
+	setup_schema();
 
 		/* sets up the Greenplum Database admin schema */
 		setup_cdb_schema();
 
-		vacuum_db();
+	vacuum_db();
 
-		make_template0();
+	make_template0();
 
-		make_postgres();
-	}
+	make_postgres();
+}
 
 	if (authwarning != NULL)
 		fprintf(stderr, "%s", authwarning);

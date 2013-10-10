@@ -47,6 +47,7 @@
 #include "replication/walsender.h"
 #include "replication/walreceiver.h"
 #include "storage/freespace.h"
+#include "storage/dsm.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
@@ -416,6 +417,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	if (!IsUnderPostmaster)
 		ShmemBackendArrayAllocation();
 #endif
+	/* Initialize dynamic shared memory facilities. */
+	if (!IsUnderPostmaster)
+		dsm_postmaster_startup();
+
 
 	BackoffStateInit();
 	

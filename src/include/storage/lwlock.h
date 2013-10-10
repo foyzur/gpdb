@@ -92,6 +92,7 @@ typedef enum LWLockId
 	ResGroupLock,
 	FileRepAppendOnlyCommitCountLock,
 	SyncRepLock,
+	DynamicSharedMemoryControlLock,
 	ErrorLogLock,
 	FirstWorkfileMgrLock,
 	FirstWorkfileQuerySpaceLock = FirstWorkfileMgrLock + NUM_WORKFILEMGR_PARTITIONS,

@@ -122,6 +122,13 @@ max_prepared_transactions = 250		# can be 0 or more
 #work_mem = 32MB			# min 64kB
 #maintenance_work_mem = 64MB		# min 1MB
 #max_stack_depth = 2MB			# min 100kB
+#dynamic_shared_memory_type = posix # the default is the first option
+					# supported by the operating system:
+					#   posix
+					#   sysv
+					#   windows
+					#   mmap
+					# use none to disable dynamic shared memory
 
 # - Free Space Map -
 
