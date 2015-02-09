@@ -14,9 +14,14 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(top_srcdir)/src/backend/gp_libpq_fe $(CPPFLAGS)
 
 
-OBJS = execAmi.o execGrouping.o execJunk.o execMain.o \
-       execProcnode.o execQual.o execScan.o execTuples.o \
-       execUtils.o functions.o instrument.o nodeAppend.o nodeAgg.o \
+OBJS = execAmi.o execGrouping.o execHHashagg.o execJunk.o execMain.o \
+       execProcnode.o execQual.o execScan.o execTuples.o execGpmon.o \
+       execUtils.o execWorkfile.o execHeapScan.o execAOScan.o execAOCSScan.o \
+       execBitmapTableScan.o execBitmapHeapScan.o execBitmapAOScan.o execDynamicScan.o \
+       execIndexscan.o \
+       functions.o \
+       instrument.o \
+       nodeAppend.o nodeAgg.o \
        nodeBitmapAnd.o nodeBitmapOr.o \
        nodeBitmapHeapscan.o nodeBitmapIndexscan.o nodeHash.o \
        nodeHashjoin.o nodeIndexscan.o nodeMaterial.o nodeMergejoin.o \
@@ -26,8 +31,13 @@ OBJS = execAmi.o execGrouping.o execJunk.o execMain.o \
        nodeSubplan.o nodeSubqueryscan.o nodeTidscan.o tstoreReceiver.o spi.o \
        nodeBitmapTableScan.o \
        nodeExternalscan.o \
-       nodeDynamicIndexscan.o \
-       nodeMotion.o \
+       nodeFunctionscan.o \
+       nodeHash.o nodeHashjoin.o \
+       nodeIndexscan.o nodeDynamicIndexscan.o \
+       nodeLimit.o \
+       nodeMaterial.o nodeMergejoin.o nodeMotion.o \
+       nodeNestloop.o \
+       nodeResult.o \
        nodeRepeat.o \
        nodeShareInputScan.o \
        nodeTableFunction.o \
@@ -40,9 +50,6 @@ OBJS = execAmi.o execGrouping.o execJunk.o execMain.o \
        nodeDML.o \
        execDML.o \
        nodePartitionSelector.o \
-       execBitmapTableScan.o execBitmapHeapScan.o execBitmapAOScan.o \
-       execDynamicScan.o execDynamicIndexScan.o \
-       execIndexscan.o \
-       execHHashagg.o execGpmon.o execWorkfile.o execHeapScan.o execAOScan.o \
-       execAOCSScan.o nodeBitmapAppendOnlyscan.o
+       execTupleHashComputer.o execSimpleJoin.o execAbstractReader.o execResilientJoin.o \
+       nodeResilientJoin.o nodeHashDummy.o
 include $(top_srcdir)/src/backend/common.mk

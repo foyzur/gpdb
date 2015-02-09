@@ -2648,6 +2648,14 @@ static void remove_unused_initplans_helper(Plan *plan, Bitmapset **usedParams, B
 			find_params_walker((Node *) hsjoin->hashqualclauses, &context);
 			break;
 		}
+		case T_ResilientJoin:
+		{
+			ResilientJoin *rsjoin = (ResilientJoin *) plan;
+			find_params_walker((Node *) rsjoin->join.joinqual, &context);
+			find_params_walker((Node *) rsjoin->hashclauses, &context);
+			find_params_walker((Node *) rsjoin->hashqualclauses, &context);
+			break;
+		}
 		case T_Motion:
 		{
 			Motion *motion = (Motion *) plan;
