@@ -410,8 +410,8 @@ _outResilientJoin(StringInfo str, ResilientJoin *node)
 
 	_outJoinPlanInfo(str, (Join *) node);
 
-	WRITE_LIST_FIELD(hashclauses);
-	WRITE_LIST_FIELD(hashqualclauses);
+	WRITE_NODE_FIELD(hashclauses);
+	WRITE_NODE_FIELD(hashqualclauses);
 }
 
 static void
