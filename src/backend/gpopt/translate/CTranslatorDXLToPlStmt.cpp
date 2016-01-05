@@ -1843,6 +1843,8 @@ CTranslatorDXLToPlStmt::PhjFromDXLHJ
 			plHashClauses = gpdb::PlAppendElement(plHashClauses, pexpr2);
 		}
 
+		GPOS_ASSERT(NIL != plHashClauses);
+
 		if (enable_resilient_join)
 		{
 			((ResilientJoin *)phj)->hashclauses = plHashClauses;
@@ -1854,8 +1856,6 @@ CTranslatorDXLToPlStmt::PhjFromDXLHJ
 			((HashJoin *)phj)->hashqualclauses = plHashConditions;
 		}
 	}
-
-	GPOS_ASSERT(NIL != phj->hashclauses);
 
 	pplan->lefttree = pplanLeft;
 	pplan->righttree = pplanRight;
