@@ -4297,6 +4297,16 @@ struct config_int ConfigureNamesInt_gp[] =
 	},
 
 	{
+		{"resilientjoin_spill_strategy", PGC_USERSET, GP_ARRAY_TUNING,
+		gettext_noop("Strategy to use to spill buckets. 0: spill largest buckets, 1: spill group of buckets"),
+		NULL,
+		GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
+		},
+		&resilientjoin_spill_strategy,
+		0, 0, 1, NULL, NULL
+	},
+
+	{
 		{"gp_hashagg_groups_per_bucket", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Target density of hashtable used by Hashagg during execution"),
 			gettext_noop("A smaller value will tend to produce larger hashtables, which increases agg performance"),
