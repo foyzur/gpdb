@@ -170,7 +170,7 @@ static int	defunct_int = 0;
 static bool	defunct_bool = false;
 static double defunct_double = 0;
 
-static bool dummy_autovac=false;
+static bool dummy_autovac = false;
 
 /*
  * GUC option variables that are exported from this module
@@ -580,7 +580,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"fsync", PGC_SIGHUP, WAL_SETTINGS,
 			gettext_noop("Forces synchronization of updates to disk."),
 			gettext_noop("The server will use the fsync() system call in several places to make "
-						 "sure that updates are physically written to disk. This insures "
+			"sure that updates are physically written to disk. This insures "
 						 "that a database cluster will recover to a consistent state after "
 						 "an operating system or hardware crash."),
 		  GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_DISALLOW_USER_SET
@@ -606,7 +606,7 @@ static struct config_bool ConfigureNamesBool[] =
 			gettext_noop("Writes full pages to WAL when first modified after a checkpoint."),
 			gettext_noop("A page write in process during an operating system crash might be "
 						 "only partially written to disk.  During recovery, the row changes "
-						 "stored in WAL are not enough to recover.  This option writes "
+			  "stored in WAL are not enough to recover.  This option writes "
 						 "pages when first modified after a checkpoint to WAL so full recovery "
 						 "is possible."),
 			 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
@@ -1049,7 +1049,7 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
-    {
+	{
 		{"ignore_system_indexes", PGC_BACKEND, DEVELOPER_OPTIONS,
 			gettext_noop("Disables reading from system indexes."),
 			gettext_noop("It does not prevent updating the indexes, so it is safe "
@@ -1401,7 +1401,7 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"max_fsm_relations", PGC_POSTMASTER, RESOURCES_FSM,
 			gettext_noop("Sets the maximum number of tables and indexes for which free space is tracked."),
-		        NULL
+			NULL
 		},
 		&MaxFSMRelations,
 		1000, 100, INT_MAX, NULL, NULL
@@ -1726,7 +1726,7 @@ static struct config_int ConfigureNamesInt[] =
 		&server_version_num,
 		PG_VERSION_NUM, PG_VERSION_NUM, PG_VERSION_NUM, NULL, NULL
 	},
-
+				
 	{
 		{"log_temp_files", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Log the use of temporary files larger than this number of kilobytes."),
@@ -1892,7 +1892,7 @@ static struct config_real ConfigureNamesReal[] =
 		0.1, 0.0, 100.0, NULL, NULL
 	},
 
-/* End-of-list marker */
+	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL
 	}
@@ -1965,7 +1965,7 @@ static struct config_string ConfigureNamesString[] =
 		"warning", assign_log_min_messages, NULL
 	},
 
- 	{
+	{
 		{"IntervalStyle", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets the display format for interval values."),
 			NULL,
@@ -2008,7 +2008,7 @@ static struct config_string ConfigureNamesString[] =
 		{"log_line_prefix", PGC_SIGHUP, DEFUNCT_OPTIONS,
 			gettext_noop("Controls information prefixed to each log line."),
 			gettext_noop("If blank, no prefix is used."),
-		 	GUC_NO_SHOW_ALL
+			GUC_NO_SHOW_ALL
 		},
 		&Log_line_prefix,
 		"%m|%u|%d|%p|%I|%X|:-", NULL, NULL
@@ -2440,7 +2440,7 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"ssl_ciphers", PGC_POSTMASTER, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the list of allowed SSL ciphers."),
-		    NULL,
+			NULL,
 			GUC_SUPERUSER_ONLY
 		},
 		&SSLCipherSuites,
@@ -2462,7 +2462,7 @@ static struct config_string ConfigureNamesString[] =
 		{"external_pid_file", PGC_POSTMASTER, FILE_LOCATIONS,
 			gettext_noop("Writes the postmaster PID to the specified file."),
 			NULL,
-			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&external_pid_file,
 		NULL, assign_canonical_path, NULL
@@ -4458,7 +4458,7 @@ set_config_option(const char *name, const char *value,
 		return true;
 	}
 
-    /*
+	/*
 	 * Disallow changing GUC_NOT_WHILE_SEC_REST values if we are inside a
 	 * security restriction context.  We can reject this regardless of
 	 * the GUC context or source, mainly because sources that it might be
