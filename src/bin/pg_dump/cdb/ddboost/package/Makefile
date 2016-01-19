@@ -5,7 +5,7 @@ GPMGMT=$(BLD_TOP)/gpMgmt
 include $(BLD_TOP)/Makefile.global
 
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
-ARCH=$(shell uname -p)
+ARCH=$(shell uname -m)
 
 DDBOOSTLIB_DIR=`cd .. && pwd`
 DDBOOSTLIB_GPPKG_VER=2.6.2_pv1.2.1_gpdb4.3orca

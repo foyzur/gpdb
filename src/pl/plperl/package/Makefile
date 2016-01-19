@@ -7,7 +7,7 @@ include $(BLD_TOP)/releng/releng.mk
 include $(BLD_TOP)/Makefile.global
 
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
-ARCH=$(shell uname -p)
+ARCH=$(shell uname -m)
 
 # NOTE: PERL_DIR is dfined in $(BLD_TOP)/releng/releng.mk
 

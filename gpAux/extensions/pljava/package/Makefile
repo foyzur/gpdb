@@ -6,7 +6,7 @@ include $(BLD_TOP)/releng/tools.mk
 include $(BLD_TOP)/Makefile.global
 
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
-ARCH=$(shell uname -p)
+ARCH=$(shell uname -m)
 
 JRE_VER=1.6.0_32
 JRE_REL=1

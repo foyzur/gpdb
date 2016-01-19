@@ -130,7 +130,7 @@ if [ ${PLAT} = "Linux" ]; then
         MPP_ARCH_BASE="SuSE"
         OS_VERSION_MAJOR=`head -2 /etc/SuSE-release | tail -1 | awk '{print $3}'`
     fi
-    CPU=`uname -p`
+    CPU=`uname -m`
     if [ ${CPU} = "i686" ]; then
         MPP_ARCH="${MPP_ARCH_BASE}${OS_VERSION_MAJOR}-i386"
         BIZGRES_ARCH="Redhat32"

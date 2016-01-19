@@ -6,7 +6,7 @@ GP_VERSION_NUM := $(shell grep 'define  *GP_VERSION_NUM' $(pg_config_path) \
         | perl -ne '$$m1=int($$1/10000),$$m2=int(($$1-$$m1*10000)/100) if/^.*?([0-9]+)/;print "$$m1.$$m2$$/"' )
 
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
-ARCH=$(shell uname -p)
+ARCH=$(shell uname -m)
 
 # e.g. 
 # postgis-1.0-1-x86_64.rpm

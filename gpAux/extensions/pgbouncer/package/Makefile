@@ -5,7 +5,7 @@ GPMGMT=$(BLD_TOP)/gpMgmt
 include $(BLD_TOP)/Makefile.global
 
 OS=$(word 1,$(subst _, ,$(BLD_ARCH)))
-ARCH=$(shell uname -p)
+ARCH=$(shell uname -m)
 
 PGBOUNCER_DIR=`cd ../source && pwd`
 PGBOUNCER_VER=1.2
