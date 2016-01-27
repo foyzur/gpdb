@@ -11,11 +11,6 @@
 UNAME = $(shell uname)
 UNAME_M = $(shell uname -m)
 
-# Use canonical name for 64-bit x86.
-ifeq (amd64, $(UNAME_M))
-	UNAME_M = x86_64
-endif
-
 ARCH_OS = GPOS_$(UNAME)
 ARCH_CPU = GPOS_$(UNAME_M)
 
@@ -25,13 +20,10 @@ else
 	GPOPT_flags = -g3 -DGPOS_DEBUG
 endif
 
-# i386/i686 is 32-bit. Assume other CPU architectures are 64-bit.
-ifeq (i386, $(UNAME_M))
-	ARCH_BIT = GPOS_32BIT
-else ifeq (i686, $(UNAME_M))
-	ARCH_BIT = GPOS_32BIT
-else
+ifeq (x86_64, $(UNAME_M))
 	ARCH_BIT = GPOS_64BIT
+else
+	ARCH_BIT = GPOS_32BIT
 endif
 
 BLD_FLAGS = -D$(ARCH_BIT) -D$(ARCH_CPU) -D$(ARCH_OS) $(GPOPT_flags)
