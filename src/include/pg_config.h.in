@@ -77,8 +77,14 @@
 /* Define to 1 if you have the <atomic.h> header file. */
 #undef HAVE_ATOMIC_H
 
+/* Define to 1 if you have the <balerion/code_generator.h> header file. */
+#undef HAVE_BALERION_CODE_GENERATOR_H
+
 /* Define to 1 if you have the `cbrt' function. */
 #undef HAVE_CBRT
+
+/* Define to 1 if you have the <clang/Tooling/Tooling.h> header file. */
+#undef HAVE_CLANG_TOOLING_TOOLING_H
 
 /* Define to 1 if you have the `class' function. */
 #undef HAVE_CLASS
@@ -347,6 +353,9 @@
 
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
+
+/* Define to 1 if you have the <llvm/IR/LLVMContext.h> header file. */
+#undef HAVE_LLVM_IR_LLVMCONTEXT_H
 
 /* Define to 1 if constants of type 'long long int' should have the suffix LL.
    */
@@ -781,6 +790,9 @@
 
 /* Define to 1 to build with assertion checks. (--enable-cassert) */
 #undef USE_ASSERT_CHECKING
+
+/* Define to 1 to build with Balerion. (--enable-balerion) */
+#undef USE_BALERION
 
 /* Define to 1 to build with Bonjour support. (--with-bonjour) */
 #undef USE_BONJOUR

@@ -148,7 +148,7 @@ PGAC_ARG_REQ(with, libs,      [  --with-libs=DIRS        alternative spelling of
 # 64-bit integer date/time storage: enabled by default.
 #
 AC_MSG_CHECKING([whether to build with 64-bit integer date/time support])
-PGAC_ARG_BOOL(enable, integer-datetimes, yes, [disable 64-bit integer date/time support],
+PGAC_ARG_BOOL(enable, integer-datetimes, yes, [  --disable-integer-datetimes  disable 64-bit integer date/time support],
               [AC_DEFINE([USE_INTEGER_DATETIMES], 1,
                          [Define to 1 if you want 64-bit integer timestamp and interval support. (--enable-integer-datetimes)])])
 AC_MSG_RESULT([$enable_integer_datetimes])
@@ -238,7 +238,7 @@ AC_SUBST(enable_profiling)
 # --enable-coverage enables generation of code coverage metrics with gcov
 #
 PGAC_ARG_BOOL(enable, coverage, no,
-              [build with coverage testing instrumentation],
+              [  --enable-coverage       build with coverage testing instrumentation],
 [AC_CHECK_PROGS(GCOV, gcov)
 if test -z "$GCOV"; then
   AC_MSG_ERROR([gcov not found])
@@ -338,7 +338,6 @@ if test "$GCC" = yes; then
     CFLAGS="$CFLAGS -std=gnu99 "
   fi
 fi
-
 
 # Check for x86 cpuid instruction to determine if we can perform a
 # runtime check
@@ -593,35 +592,44 @@ PGAC_ARG_BOOL(enable, cassert, no, [  --enable-cassert        enable assertion c
 #
 # Enable debug_break
 #
-PGAC_ARG_BOOL(enable, debugbreak, no, [  --enable-debugbreak        enable debug_break and debug_break_n (for debugging)],
+PGAC_ARG_BOOL(enable, debugbreak, no, [  --enable-debugbreak     enable debug_break and debug_break_n (for debugging)],
               [AC_DEFINE([USE_DEBUG_BREAK], 1,
                          [Define to 1 to build with debug_break capabilities. (--enable-debugbreak)])])
 
 # Enable debug ntuplestore
-PGAC_ARG_BOOL(enable, debugntuplestore, no, [  --enable-ntuplestore      enable debug_ntuplestore (for debugging)],
+PGAC_ARG_BOOL(enable, debugntuplestore, no, [  --enable-ntuplestore    enable debug_ntuplestore (for debugging)],
               [AC_DEFINE([USE_DEBUG_NTUPLESTORE], 1,
                          [Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore)])])
 
 #
 # Enable testing utilities
 #
-PGAC_ARG_BOOL(enable, testutils, no, [  --enable-testutils        enable testing utilities],
+PGAC_ARG_BOOL(enable, testutils, no, [  --enable-testutils      enable testing utilities],
               [AC_DEFINE([USE_TEST_UTILS], 1,
                          [Define to 1 to build with testing utilities. (--enable-testutils)])])
 
 #
 # Enable Greenplum ORCA optimizer
 #
-PGAC_ARG_BOOL(enable, orca, no, [  --enable-orca        enable ORCA optimizer],
+PGAC_ARG_BOOL(enable, orca, no, [  --enable-orca           enable ORCA optimizer],
               [AC_DEFINE([USE_ORCA], 1,
                          [Define to 1 to build with Greenplum ORCA optimizer. (--enable-orca)])])
 AC_MSG_RESULT([enable_orca])
 AC_SUBST(enable_orca)
 
 #
+# Enable Balerion code-generation library.
+#
+PGAC_ARG_BOOL(enable, balerion, no, [  --enable-balerion       enable Balerion code generation],
+              [AC_DEFINE([USE_BALERION], 1,
+                         [Define to 1 to build with Balerion. (--enable-balerion)])])
+AC_MSG_RESULT([enable_balerion])
+AC_SUBST(enable_balerion)
+
+#
 # --enable-snmp enables snmp mib and trap/inform
 #
-PGAC_ARG_BOOL(enable, snmp, no, [  --enable-snmp        enable snmp for MIB and alerts via TRAP/INFORM],
+PGAC_ARG_BOOL(enable, snmp, no, [  --enable-snmp           enable snmp for MIB and alerts via TRAP/INFORM],
               [AC_DEFINE([USE_SNMP], 1,
                          [Define to 1 to build with snmp capabilities. (--enable-snmp)])])
 AC_MSG_RESULT([checking whether to build with snmp... $enable_snmp])
@@ -639,7 +647,7 @@ AC_SUBST(enable_connectemc)
 #
 # --enable-ddboost enables DD Boost support
 #
-PGAC_ARG_BOOL(enable, ddboost, no,  [  --enable-ddboost     enable connect emc support],
+PGAC_ARG_BOOL(enable, ddboost, no,  [  --enable-ddboost        enable connect emc support],
               [AC_DEFINE([USE_DDBOOST], 1,
                          [Define to 1 to build with DD Boost capabilities. (--enable-ddboost)])])
 AC_MSG_RESULT([$enable_ddboost])
@@ -648,7 +656,7 @@ AC_SUBST(enable_ddboost)
 #
 # --enable-netbackup enables NetBackup support
 #
-PGAC_ARG_BOOL(enable, netbackup, no,  [  --enable-netbackup     enable NetBackup support],
+PGAC_ARG_BOOL(enable, netbackup, no,  [  --enable-netbackup      enable NetBackup support],
               [AC_DEFINE([USE_NETBACKUP], 1,
                          [Define to 1 to build with NetBackup capabilities. (--enable-netbackup)])])
 AC_MSG_RESULT([$enable_netbackup])
@@ -1141,6 +1149,28 @@ AS_IF([test "$enable_orca" = yes],
 [ # then
   AC_CHECK_HEADERS(gpopt/init.h,  [], [AC_MSG_ERROR([gpopt/init.h GPOPT header file is required for Greenplum Query Optimizer (orca)])])
   AC_CHECK_HEADERS(gpos/assert.h, [], [AC_MSG_ERROR([gpos/assert.h GPOS header file is required for Greenplum Query Optimizer (orca)])])
+]) # fi
+
+# Check for Balerion and required LLVM headers.
+AS_IF([test "$enable_balerion" = yes],
+[ # then
+  AC_LANG_PUSH(C++)
+
+  # For C++ sources, compile in C++11 mode.
+  CXXFLAGS="$CXXFLAGS -std=c++11"
+
+  # CPPFLAGS are the same for C and C++. Remember and restore the original flags
+  # after this check.
+  CPPFLAGS_ORIGINAL=$CPPFLAGS
+  CPPFLAGS="$CPPFLAGS -std=c++11"
+
+  AC_CHECK_HEADERS(balerion/code_generator.h,  [], [AC_MSG_ERROR([balerion/code_generator.h balerion/code_generator.h header file is required for Balerion])])
+  AC_CHECK_HEADERS(llvm/IR/LLVMContext.h, [], [AC_MSG_ERROR([llvm/IR/LLVMContext.h LLVM header file is required for Balerion])])
+  AC_CHECK_HEADERS(clang/Tooling/Tooling.h, [], [AC_MSG_ERROR([clang/Tooling/Tooling.h Clang header file is required for Balerion])])
+
+  CPPFLAGS=$CPPFLAGS_ORIGINAL
+
+  AC_LANG_POP(C++)
 ]) # fi
 
 dnl sys/socket.h is required by AC_FUNC_ACCEPT_ARGTYPES
