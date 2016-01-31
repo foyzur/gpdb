@@ -26,7 +26,6 @@ else
 	LDSFX = so
 endif
 
-
 ##-------------------------------------------------------------------------------------
 ## dependent modules
 ##
@@ -38,6 +37,8 @@ endif
 # by default use optimized build libraries of GP Optimizer
 # use 'make BLD_TYPE=debug' to work with debug build libraries of GP Optimizer
 BLD_TYPE=opt
+
+OBJDIR_DEFAULT = .obj.$(UNAME_ALL)$(ARCH_FLAGS).$(BLD_TYPE)
 
 GREP_SED_VAR = $(BLD_TOP)/releng/make/dependencies/ivy.xml | sed -e 's|\(.*\)rev="\(.*\)"[ \t]*conf\(.*\)|\2|'
 
@@ -51,8 +52,13 @@ XERCES = $(BLD_TOP)/ext/$(BLD_ARCH)
 XERCES_LIBDIR = $(XERCES)/lib
 
 LIBGPOS = $(BLD_TOP)/ext/$(BLD_ARCH)/libgpos
+LIBGPOS_LIBDIR = $(LIBGPOS)/$(OBJDIR_DEFAULT)
 
 OPTIMIZER = $(BLD_TOP)/ext/$(BLD_ARCH)
+LIBGPOPT_LIBDIR = $(OPTIMIZER)/libgpopt/$(OBJDIR_DEFAULT)
+LIBGPOPTUDF_LIBDIR = $(OPTIMIZER)/libgpoptudf/$(OBJDIR_DEFAULT)
+LIBNAUCRATES_LIBDIR = $(OPTIMIZER)/libnaucrates/$(OBJDIR_DEFAULT)
+LIBGPDBCOST_LIBDIR = $(OPTIMIZER)/libgpdbcost/$(OBJDIR_DEFAULT)
 
 LIBSTDC++_BASEDIR = $(BLD_TOP)/ext/$(BLD_ARCH)
 
