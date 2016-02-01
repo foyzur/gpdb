@@ -4130,7 +4130,7 @@ Plan* add_subqueryscan(PlannerInfo* root, List **p_pathkeys,
 
 	mark_passthru_locus(subplan, true, true);
 
-	if ( p_pathkeys != NULL && *p_pathkeys != NULL )
+	if (p_pathkeys != NULL)
 	{
 		*p_pathkeys = reconstruct_pathkeys(root, *p_pathkeys, resno_map,
 										   subquery->targetList, subplan_tlist);
@@ -4217,24 +4217,43 @@ reconstruct_pathkeys(PlannerInfo *root, List *pathkeys, int *resno_map,
 	ListCell   *i,
 			   *j;
 
+	new_pathkeys = NIL;
 	foreach(i, pathkeys)
 	{
 		PathKey    *pathkey = (PathKey *) lfirst(i);
-		TargetEntry *new_tle;
+		bool		found;
 
 		foreach(j, pathkey->pk_eclass->ec_members)
 		{
 			EquivalenceMember *em = (EquivalenceMember *) lfirst(j);
 			TargetEntry *tle = tlist_member((Node *) em->em_expr, orig_tlist);
+
 			if (tle)
 			{
+				TargetEntry *new_tle;
+				EquivalenceClass *new_eclass;
+				PathKey	   *new_pathkey;
+
 				new_tle = get_tle_by_resno(new_tlist, resno_map[tle->resno - 1]);
-				Assert(new_tle != NULL);
+				if (!new_tle)
+					elog(ERROR, "could not find path key expression in constructed subquery's target list");
+
+				new_eclass = get_eclass_for_sort_expr(root, new_tle->expr,
+													  em->em_datatype,
+													  pathkey->pk_eclass->ec_opfamilies);
+				new_pathkey = makePathKey(new_eclass, pathkey->pk_opfamily, pathkey->pk_strategy,
+										  pathkey->pk_nulls_first);
+
+				new_pathkeys = lappend(new_pathkeys, new_pathkey);
+				found = true;
+				break;
 			}
 		}
+		if (!found)
+			elog(ERROR, "could not find path key item in subplan's target list");
 	}
 
-	new_pathkeys = canonicalize_pathkeys(root, pathkeys);
+	new_pathkeys = canonicalize_pathkeys(root, new_pathkeys);
 
 	return new_pathkeys;
 }
@@ -6236,8 +6255,12 @@ within_agg_join_plans(PlannerInfo *root,
 			rinfo = make_mergeclause((Node *) outer_var, (Node *) inner_var);
 			join_clause = lappend(join_clause, rinfo);
 
-			/* Also fill in the mergefamilies/mergestrategis/mergenullsfirst arrays for this */
-			mergefamilies[idx] = pk->pk_opfamily;
+			/*
+			 * Also fill in the mergefamilies/mergestrategies/mergenullsfirst
+			 * arrays for this. Arbitrarily use the first operator family we
+			 * find.
+			 */
+			mergefamilies[idx] = linitial_oid(rinfo->mergeopfamilies);
 			mergestrategies[idx] = pk->pk_strategy;
 			mergenullsfirst[idx] = pk->pk_nulls_first;
 			idx++;

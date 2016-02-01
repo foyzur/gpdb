@@ -10,6 +10,8 @@
 
 UNAME = $(shell uname)
 UNAME_M = $(shell uname -m)
+
+# Use canonical name for 64-bit x86.
 ifeq (amd64, $(UNAME_M))
 	UNAME_M = x86_64
 endif
@@ -23,18 +25,16 @@ else
 	GPOPT_flags = -g3 -DGPOS_DEBUG
 endif
 
-ARCH_BIT = GPOS_64BIT
-ifeq (Darwin, $(UNAME))
+# i386/i686 is 32-bit. Assume other CPU architectures are 64-bit.
+ifeq (i386, $(UNAME_M))
 	ARCH_BIT = GPOS_32BIT
-endif
-
-ifeq ($(ARCH_BIT), GPOS_32BIT)
-	ARCH_FLAGS = -m32
+else ifeq (i686, $(UNAME_M))
+	ARCH_BIT = GPOS_32BIT
 else
-	ARCH_FLAGS = -m64
+	ARCH_BIT = GPOS_64BIT
 endif
 
-BLD_FLAGS = $(ARCH_FLAGS) -D$(ARCH_BIT) -D$(ARCH_CPU) -D$(ARCH_OS) $(GPOPT_flags)
+BLD_FLAGS = -D$(ARCH_BIT) -D$(ARCH_CPU) -D$(ARCH_OS) $(GPOPT_flags)
 override CPPFLAGS := -fPIC $(CPPFLAGS)
 override CPPFLAGS := $(BLD_FLAGS)  $(CPPFLAGS)
 override CPPFLAGS := -DGPOS_VERSION=\"$(LIBGPOS_VER)\" $(CPPFLAGS)

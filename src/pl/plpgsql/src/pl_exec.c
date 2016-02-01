@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_exec.c,v 1.183 2007/01/09 22:01:00 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_exec.c,v 1.187 2007/02/01 19:22:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1084,6 +1084,8 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 											CStringGetDatum(edata->message));
 					errm_var->freeval = true;
 					errm_var->isnull = false;
+
+					estate->err_text = NULL;
 
 					rc = exec_stmts(estate, exception->action);
 

@@ -104,6 +104,47 @@ throughout the codebase, but a few larger additions worth noting:
   FTS is a process that runs in the master node, and periodically
   polls the segments to maintain the status of each segment.
 
+## Build GPDB with Planner
+
+```
+# Clean environment
+make distclean
+
+# Configure build environment to install at /usr/local/gpdb
+./configure --prefix=/usr/local/gpdb
+
+# Compile and install
+make
+make install
+
+# Bring in greenplum environment into your running shell
+source /usr/local/gpdb/greenplum_path.sh
+
+# Start demo cluster (gpdemo-env.sh is created which contain
+# __PGPORT__ and __MASTER_DATA_DIRECTORY__ values)
+cd gpAux/gpdemo
+make cluster
+source gpdemo-env.sh
+```
+
+## Build GPDB with GPORCA
+
+Only need to change the `configure` with additional option `--enable-orca`.
+```
+# Configure build environment to install at /usr/local/gpdb
+# Enable GPORCA
+# Build with perl
+# Build with python
+# Build with libxml
+./configure --enable-orca --with-perl --with-python --with-libxml --prefix=/usr/local/gpdb
+```
+
+Once build and started, run `psql` and check the GPOPT (e.g. GPORCA) version:
+
+```
+select gp_opt_version();
+```
+
 ## Regression tests
 
 * The default regression tests
@@ -129,43 +170,6 @@ make installcheck-bugbuster
   some tests are known to fail with Greenplum. The
   __installcheck-good__ schedule excludes those tests.
 
-## Basic GPDB source configuration, compilation, gpdemo cluster creation and test execution example
-
-* Configure build environment
-
-```
-configure --prefix=<install location>
-```
-
-* Compilation and install
-
-```
-make
-make install
-```
-
-* Bring in greenplum environment into your running shell
-
-```
-source <install location>/greenplum_path.sh
-```
-
-* Start demo cluster (gpdemo-env.sh is created which contain
-  __PGPORT__ and __MASTER_DATA_DIRECTORY__ values)
-
-
-```
-cd gpAux/gpdemo
-make cluster
-source gpdemo-env.sh
-```
-
-* Run tests
-
-```
-make installcheck-good
-```
-
 ## Glossary
 
 * __QD__
@@ -180,3 +184,5 @@ make installcheck-good
 
 For Greenplum Database documentation, please check online docs:
 http://gpdb.docs.pivotal.io
+
+There is also a Vagrant-based quickstart guide for developers in `vagrant/README.md`.

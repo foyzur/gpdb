@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/index.c,v 1.276 2007/01/09 02:14:11 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/index.c,v 1.282 2007/03/29 00:15:37 tgl Exp $
  *
  *
  * INTERFACE ROUTINES
@@ -810,7 +810,7 @@ index_create(Oid heapRelationId,
 
 			/* Shouldn't have any expressions */
 			if (indexInfo->ii_Expressions)
-				elog(ERROR, "constraints can't have index expressions");
+				elog(ERROR, "constraints cannot have index expressions");
 
 			Insist(constrOid != NULL);
 			*constrOid = CreateConstraintEntry(constraintName,

@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/vacuum.c,v 1.342.2.8 2009/12/09 21:58:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/vacuum.c,v 1.344 2007/02/01 19:10:26 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -58,7 +58,6 @@
 #include "lib/stringinfo.h"
 #include "libpq/pqformat.h"             /* pq_beginmessage() etc. */
 #include "miscadmin.h"
-#include "optimizer/prep.h"
 #include "postmaster/autovacuum.h"
 #include "storage/freespace.h"
 #include "storage/proc.h"
@@ -80,7 +79,7 @@
 #include "nodes/makefuncs.h"     /* makeRangeVar */
 #include "gp-libpq-fe.h"
 #include "gp-libpq-int.h"
-#include "storage/lwlock.h"
+
 
 /*
  * GUC parameters
@@ -113,6 +112,28 @@ typedef struct VacPageListData
 
 typedef VacPageListData *VacPageList;
 
+/*
+ * The "vtlinks" array keeps information about each recently-updated tuple
+ * ("recent" meaning its XMAX is too new to let us recycle the tuple).
+ * We store the tuple's own TID as well as its t_ctid (its link to the next
+ * newer tuple version).  Searching in this array allows us to follow update
+ * chains backwards from newer to older tuples.  When we move a member of an
+ * update chain, we must move *all* the live members of the chain, so that we
+ * can maintain their t_ctid link relationships (we must not just overwrite
+ * t_ctid in an existing tuple).
+ *
+ * Note: because t_ctid links can be stale (this would only occur if a prior
+ * VACUUM crashed partway through), it is possible that new_tid points to an
+ * empty slot or unrelated tuple.  We have to check the linkage as we follow
+ * it, just as is done in EvalPlanQual.
+ */
+typedef struct VTupleLinkData
+{
+	ItemPointerData new_tid;	/* t_ctid of an updated tuple */
+	ItemPointerData this_tid;	/* t_self of the tuple */
+} VTupleLinkData;
+
+typedef VTupleLinkData *VTupleLink;
 
 /*
  * We use an array of VTupleMoveData to plan a chain tuple move fully
@@ -127,6 +148,21 @@ typedef struct VTupleMoveData
 
 typedef VTupleMoveData *VTupleMove;
 
+/*
+ * VRelStats contains the data acquired by scan_heap for use later
+ */
+typedef struct VRelStats
+{
+	/* miscellaneous statistics */
+	BlockNumber rel_pages;
+	double		rel_tuples;
+	Size		min_tlen;
+	Size		max_tlen;
+	bool		hasindex;
+	/* vtlinks array for tuple chain following - sorted by new_tid */
+	int			num_vtlinks;
+	VTupleLink	vtlinks;
+} VRelStats;
 
 /*----------------------------------------------------------------------
  * ExecContext:
@@ -1781,7 +1817,7 @@ vac_truncate_clog(TransactionId frozenXID)
 	{
 		ereport(WARNING,
 				(errmsg("some databases have not been vacuumed in over 2 billion transactions"),
-				 errdetail("You may have already suffered transaction-wraparound data loss.")));
+				 errdetail("You might have already suffered transaction-wraparound data loss.")));
 		return;
 	}
 
@@ -1803,6 +1839,7 @@ vac_truncate_clog(TransactionId frozenXID)
  *																			*
  ****************************************************************************
  */
+
 
 /*
  *	vacuum_rel() -- vacuum one heap relation
@@ -2339,7 +2376,15 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt, List *updated_stats)
 		{
 			elogif(Debug_appendonly_print_compaction, LOG,
 					"Vacuum full cleanup phase %s", RelationGetRelationName(onerel));
-			vacuum_appendonly_fill_stats(onerel, ActiveSnapshot, vacrelstats, true);
+			vacuum_appendonly_fill_stats(onerel, ActiveSnapshot,
+										 &vacrelstats->rel_pages,
+										 &vacrelstats->rel_tuples,
+										 &vacrelstats->hasindex);
+			/* Reset the remaining VRelStats values */
+			vacrelstats->min_tlen = 0;
+			vacrelstats->max_tlen = 0;
+			vacrelstats->num_vtlinks = 0;
+			vacrelstats->vtlinks = NULL;
 		}
 	}
 	else
@@ -2766,7 +2811,7 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 					 * release write lock before commit there.)
 					 */
 					ereport(NOTICE,
-							(errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- can't shrink relation",
+							(errmsg("relation \"%s\" TID %u/%u: InsertTransactionInProgress %u --- cannot shrink relation",
 									relname, blkno, offnum, HeapTupleHeaderGetXmin(tuple.t_data))));
 					do_shrinking = false;
 					break;
@@ -2779,7 +2824,7 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 					 * release write lock before commit there.)
 					 */
 					ereport(NOTICE,
-							(errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- can't shrink relation",
+							(errmsg("relation \"%s\" TID %u/%u: DeleteTransactionInProgress %u --- cannot shrink relation",
 									relname, blkno, offnum, HeapTupleHeaderGetXmax(tuple.t_data))));
 					do_shrinking = false;
 					break;
@@ -3294,7 +3339,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 				/* Quick exit if we have no vtlinks to search in */
 				if (vacrelstats->vtlinks == NULL)
 				{
-					elog(DEBUG2, "parent item in update-chain not found --- can't continue repair_frag");
+					elog(DEBUG2, "parent item in update-chain not found --- cannot continue repair_frag");
 					break;		/* out of walk-along-page loop */
 				}
 
@@ -3459,7 +3504,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 					if (vtlp == NULL)
 					{
 						/* see discussion above */
-						elog(DEBUG2, "parent item in update-chain not found --- can't continue repair_frag");
+						elog(DEBUG2, "parent item in update-chain not found --- cannot continue repair_frag");
 						chain_move_failed = true;
 						break;	/* out of check-all-items loop */
 					}
@@ -3494,7 +3539,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 										 HeapTupleHeaderGetXmin(tp.t_data))))
 					{
 						ReleaseBuffer(Pbuf);
-						elog(DEBUG2, "too old parent tuple found --- can't continue repair_frag");
+						elog(DEBUG2, "too old parent tuple found --- cannot continue repair_frag");
 						chain_move_failed = true;
 						break;	/* out of check-all-items loop */
 					}
@@ -5126,13 +5171,13 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel,
 }
 
 /*
- * cdbanalyze_combine_stats
+ * vacuum_combine_stats
  * This function combine the stats information sent by QEs to generate
  * the final stats for QD relations.
  *
  * Note that the mirrorResults is ignored by this function.
  */
-void
+static void
 vacuum_combine_stats(CdbDispatchResults *primaryResults,
 						 void *ctx)
 {

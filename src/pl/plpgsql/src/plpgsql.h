@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/plpgsql.h,v 1.81.2.3 2008/10/09 16:35:19 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/plpgsql.h,v 1.84 2007/01/30 22:05:13 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -553,7 +553,7 @@ typedef struct PLpgSQL_function
 	char	   *fn_name;
 	Oid			fn_oid;
 	TransactionId fn_xmin;
-	CommandId	fn_cmin;
+	ItemPointerData fn_tid;
 	int			fn_functype;
 	PLpgSQL_func_hashkey *fn_hashkey;	/* back-link to hashtable key */
 	MemoryContext fn_cxt;
