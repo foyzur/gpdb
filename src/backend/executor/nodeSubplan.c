@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubplan.c,v 1.82 2007/01/05 22:19:28 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubplan.c,v 1.84 2007/02/02 00:07:03 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -665,7 +665,6 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	node->keyColIdx = NULL;
 	node->eqfunctions = NULL;
 	node->hashfunctions = NULL;
-    node->cdbextratextbuf = NULL;
 
 	/*
 	 * create an EState for the subplan
@@ -862,7 +861,8 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			Expr	   *expr;
 			TargetEntry *tle;
 			GenericExprState *tlestate;
-			Oid			hashfn;
+			Oid			left_hashfn;
+			Oid			right_hashfn;
 
 			Assert(IsA(fstate, FuncExprState));
 			Assert(IsA(opexpr, OpExpr));
@@ -900,12 +900,14 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			fmgr_info(opexpr->opfuncid, &node->eqfunctions[i - 1]);
 			node->eqfunctions[i - 1].fn_expr = (Node *) opexpr;
 
-			/* Lookup the associated hash function */
-			hashfn = get_op_hash_function(opexpr->opno);
-			if (!OidIsValid(hashfn))
+			/* Lookup the associated hash functions */
+			if (!get_op_hash_functions(opexpr->opno,
+									   &left_hashfn, &right_hashfn))
 				elog(ERROR, "could not find hash function for hash operator %u",
 					 opexpr->opno);
-			fmgr_info(hashfn, &node->hashfunctions[i - 1]);
+			/* For the moment, not supporting cross-type cases */
+			Assert(left_hashfn == right_hashfn);
+			fmgr_info(right_hashfn, &node->hashfunctions[i - 1]);
 
 			i++;
 		}
@@ -1048,8 +1050,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext,
 		planstate->plan != NULL &&
 		planstate->plan->dispatch == DISPATCH_PARALLEL)
 		shouldDispatch = true;
-
-	node->cdbextratextbuf = NULL;
 
 	/*
 	 * Reset memory high-water mark so EXPLAIN ANALYZE can report each
@@ -1283,16 +1283,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext,
             /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
             if (planstate->instrument)
             {
-                MemoryContext   savecxt;
-
                 /* Wait for all gangs to finish. */
 				CdbCheckDispatchResult(queryDesc->estate->dispatcherState,
 									   DISPATCH_WAIT_NONE);
-
-                /* Allocate buffer to pass extra message text to cdbexplain. */
-                savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
-                node->cdbextratextbuf = makeStringInfo();
-                MemoryContextSwitchTo(savecxt);
 
                 /* Jam stats into subplan's Instrumentation nodes. */
                 explainRecvStats = true;

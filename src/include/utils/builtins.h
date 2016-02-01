@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/builtins.h,v 1.286 2007/01/16 21:41:14 neilc Exp $
+ * $PostgreSQL: pgsql/src/include/utils/builtins.h,v 1.287 2007/01/28 16:16:54 neilc Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -582,6 +582,9 @@ extern Datum pg_get_expr(PG_FUNCTION_ARGS);
 extern Datum pg_get_expr_ext(PG_FUNCTION_ARGS);
 extern Datum pg_get_userbyid(PG_FUNCTION_ARGS);
 extern Datum pg_get_serial_sequence(PG_FUNCTION_ARGS);
+extern Datum pg_get_function_arguments(PG_FUNCTION_ARGS);
+extern Datum pg_get_function_identity_arguments(PG_FUNCTION_ARGS);
+extern Datum pg_get_function_result(PG_FUNCTION_ARGS);
 extern char *deparse_expression(Node *expr, List *dpcontext,
 				   bool forceprefix, bool showimplicit);
 extern char *deparse_expr_sweet(Node *expr, List *dpcontext,
@@ -1060,6 +1063,22 @@ extern Datum pg_prepared_statement(PG_FUNCTION_ARGS);
 
 /* utils/mmgr/portalmem.c */
 extern Datum pg_cursor(PG_FUNCTION_ARGS);
+
+/* uuid.c */
+extern Datum uuid_in(PG_FUNCTION_ARGS);
+extern Datum uuid_out(PG_FUNCTION_ARGS);
+extern Datum uuid_send(PG_FUNCTION_ARGS);
+extern Datum uuid_recv(PG_FUNCTION_ARGS);
+extern Datum uuid_lt(PG_FUNCTION_ARGS);
+extern Datum uuid_le(PG_FUNCTION_ARGS);
+extern Datum uuid_eq(PG_FUNCTION_ARGS);
+extern Datum uuid_ge(PG_FUNCTION_ARGS);
+extern Datum uuid_gt(PG_FUNCTION_ARGS);
+extern Datum uuid_ne(PG_FUNCTION_ARGS);
+extern Datum uuid_cmp(PG_FUNCTION_ARGS);
+extern Datum uuid_hash(PG_FUNCTION_ARGS);
+extern Datum text_uuid(PG_FUNCTION_ARGS);
+extern Datum uuid_text(PG_FUNCTION_ARGS);
 
 /* tqual.c */
 extern Datum mpp_global_xid_map(PG_FUNCTION_ARGS);

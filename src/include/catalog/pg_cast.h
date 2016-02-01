@@ -11,7 +11,7 @@
  * Portions Copyright (c) 2006-2010, Greenplum inc
  * Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.28 2007/01/05 22:19:52 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.30 2007/01/31 19:33:54 neilc Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -425,6 +425,12 @@ DATA(insert ( 1266 1266 1969 i ));
 DATA(insert ( 1560 1560 1685 i ));
 DATA(insert ( 1562 1562 1687 i ));
 DATA(insert ( 1700 1700 1703 i ));
+
+/* casts to and from uuid */ 
+DATA(insert (   25 2950 2964 a ));
+DATA(insert ( 2950   25 2965 a ));
+DATA(insert ( 1043 2950 2964 a ));
+DATA(insert ( 2950 1043 2965 a ));
 
 /*
  * CDB: Allow explicit cast from tid to int8
