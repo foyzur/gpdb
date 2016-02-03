@@ -536,6 +536,8 @@ BaseInit(void)
 	InitFileAccess();
 	smgrinit();
 	InitBufferPoolAccess();
+
+	InitCodeGen();
 }
 
 

@@ -10091,6 +10091,7 @@ if test "x$ac_cv_header_balerion_code_generator_h" = xyes; then :
 _ACEOF
 
 else
+  $as_echo "$CXXFLAGS $CPPFLAGS" >&2
   as_fn_error $? "balerion/code_generator.h balerion/code_generator.h header file is required for Balerion" "$LINENO" 5
 fi
 

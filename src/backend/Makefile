@@ -25,7 +25,7 @@ include $(BLD_TOP)/$(ADDON_DIR)/src/Makefile
 endif
 
 
-SUBDIRS = access bootstrap catalog parser commands executor \
+SUBDIRS = access bootstrap catalog parser commands executor codegen \
 	fts lib libpq gp_libpq_fe main nodes optimizer port postmaster regex \
 	replication rewrite storage tcop utils $(top_builddir)/src/timezone cdb \
 	$(ADDON_SUBDIR)
