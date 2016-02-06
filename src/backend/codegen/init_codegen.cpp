@@ -11,6 +11,7 @@
 //---------------------------------------------------------------------------
 
 #include "codegen/init_codegen.h"
+#include "codegen/slot_projection_codegen.h"
 
 #include "balerion/code_generator.h"
 
@@ -18,4 +19,21 @@
 // success, nonzero on error.
 extern "C" int InitCodeGen() {
   return balerion::CodeGenerator::InitializeGlobal() ? 0 : 1;
+}
+
+extern "C" void* ConstructCodeGenerator() {
+	return new SlotProjectionCodeGen();
+}
+
+extern "C" void PrepareForExecution(void* code_generator)
+{
+	static_cast<SlotProjectionCodeGen*>(code_generator)->PrepareForExecution();
+}
+
+extern "C" void DestructCodeGenerator(void* code_generator) {
+	delete static_cast<SlotProjectionCodeGen*>(code_generator);
+}
+
+extern "C" int (*GetDummyFunction(void* code_generator)) (int) {
+	return static_cast<SlotProjectionCodeGen*>(code_generator)->GetDummyIRModule();
 }
