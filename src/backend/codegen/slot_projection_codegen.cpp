@@ -57,6 +57,8 @@ void SlotProjectionCodeGen::GenerateDummyIRModule() {
       			{code_generator_->GetConstant(1u)});
 
     code_generator_->ir_builder()->CreateRet(ret_val);
+//    code_generator_->ir_builder()->CreateRet(
+//        code_generator_->GetConstant<int>(42));
 
 }
 

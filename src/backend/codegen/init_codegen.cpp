@@ -14,20 +14,29 @@
 #include "codegen/slot_projection_codegen.h"
 
 #include "balerion/code_generator.h"
+#include <iostream>
+
+static int code_gen_init = 0;
 
 // Perform global set-up tasks for Balerion codegen library. Returns 0 on
 // success, nonzero on error.
 extern "C" int InitCodeGen() {
+	++code_gen_init;
   return balerion::CodeGenerator::InitializeGlobal() ? 0 : 1;
 }
 
 extern "C" void* ConstructCodeGenerator() {
-	return new SlotProjectionCodeGen();
+	std::cout << "Init counter: " << code_gen_init << std::endl;
+	SlotProjectionCodeGen* code_gen = new SlotProjectionCodeGen();
+	code_gen->GenerateDummyIRModule();
+
+	void* ret_val = reinterpret_cast<void*>(code_gen);
+	return ret_val;
 }
 
 extern "C" void PrepareForExecution(void* code_generator)
 {
-	static_cast<SlotProjectionCodeGen*>(code_generator)->PrepareForExecution();
+	reinterpret_cast<SlotProjectionCodeGen*>(code_generator)->PrepareForExecution();
 }
 
 extern "C" void DestructCodeGenerator(void* code_generator) {

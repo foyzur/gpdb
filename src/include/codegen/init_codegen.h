@@ -16,6 +16,14 @@ extern "C" {
 
 int InitCodeGen();
 
+void* ConstructCodeGenerator();
+
+void PrepareForExecution(void* code_generator);
+
+void DestructCodeGenerator(void* code_generator);
+
+int (*GetDummyFunction(void* code_generator)) (int);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
