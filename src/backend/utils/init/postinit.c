@@ -541,7 +541,7 @@ BaseInit(void)
 	smgrinit();
 	InitBufferPoolAccess();
 
-#ifdef USE_BALERION
+//#ifdef USE_BALERION
 	if (codegen) {
 		if (InitCodeGen() != 0) {
 			ereport(FATAL,
@@ -553,7 +553,7 @@ BaseInit(void)
 					"\"codegen\" GUC.")));
 		}
 	}
-#endif
+//#endif
 }
 
 
