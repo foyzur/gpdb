@@ -111,6 +111,16 @@
 #define         TTS_SHOULDFREE 	2
 #define         TTS_VIRTUAL     4
 
+// The signature of slot_deform_tuple function
+typedef void (*slot_deform_tuple_fn_ptr)(TupleTableSlot *slot, int natts);
+
+// Interface to the code generation manager for the code generator of slot_deform_tuple
+typedef struct SlotDeformTupleCodeGenInfo
+{
+	void* manager_token;
+	slot_deform_tuple_fn_ptr slot_deform_tuple_fn;
+} SlotDeformTupleCodeGenInfo;
+
 typedef struct TupleTableSlot
 {
 	NodeTag		type;		/* vestigial ... allows IsA tests */
@@ -142,8 +152,7 @@ typedef struct TupleTableSlot
     /* System attributes */
     Oid         tts_tableOid;
 
-    void* code_gen;
-    SlotDeformTupleFn slot_deform_tuple_fn;
+    SlotDeformTupleCodeGenInfo slot_deform_tuple_gen_info;
 } TupleTableSlot;
 
 static inline bool TupIsNull(TupleTableSlot *slot)

@@ -262,6 +262,8 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		plannedStmt->memoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_EXECUTOR);
 	}
 
+	if (NULL == )
+
 	START_MEMORY_ACCOUNT(plannedStmt->memoryAccount);
 
 	Assert(queryDesc->plannedstmt->intoPolicy == NULL

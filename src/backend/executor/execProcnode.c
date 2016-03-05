@@ -221,6 +221,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 	MemoryAccount* curMemoryAccount = NULL;
 
+	void* codeGenManager = CodeGeneratorManager_Create();
+	START_CODE_GENERATOR_MANAGER(codeGenManager);
+	{
+
+
 	/*
 	 * Is current plan node supposed to execute in current slice?
 	 * Special case is sending motion node, which is supposed to
@@ -251,6 +256,7 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			node->type = T_BitmapTableScan;
 		}
 	}
+
 
 	switch (nodeTag(node))
 	{
@@ -745,7 +751,13 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	if (result != NULL)
 	{
 		SAVE_EXECUTOR_MEMORY_ACCOUNT(result, curMemoryAccount);
+		result->CodeGeneratorManager = codeGenManager;
+		CodeGeneratorManager_GenerateCode();
+		CodeGeneratorManager_PrepareGeneratedFunctions();
 	}
+	}
+	END_CODE_GENERATOR_MANAGER();
+
 	return result;
 }
 
@@ -1738,6 +1750,10 @@ ExecEndNode(PlanState *node)
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
 	}
+
+    Assert(NULL != node->CodeGeneratorManager);
+	CodeGeneratorManager_Destroy();
+	node->CodeGeneratorManager = NULL;
 
 	estate->currentSliceIdInPlan = origSliceIdInPlan;
 	estate->currentExecutingSliceId = origExecutingSliceId;

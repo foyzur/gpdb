@@ -1127,7 +1127,7 @@ heap_deformtuple(HeapTuple tuple,
  *		re-computing information about previously extracted attributes.
  *		slot->tts_nvalid is the number of attributes already extracted.
  */
-static void
+void
 slot_deform_tuple(TupleTableSlot *slot, int natts)
 {
 	HeapTuple	tuple = TupGetHeapTuple(slot); 
@@ -1143,28 +1143,7 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	bits8	   *bp = tup->t_bits;		/* ptr to null bitmap in tuple */
 	bool		slow;			/* can we use/set attcacheoff? */
 
-	if (NULL == slot->code_gen)
-	{
-		slot->code_gen = ConstructCodeGenerator();
-		Assert(NULL != slot->code_gen);
-		bool isSuccess = GenerateSlotDeformTuple(slot->code_gen, tupleDesc);
-
-		if (isSuccess)
-		{
-			PrepareForExecution(slot->code_gen);
-			slot->slot_deform_tuple_fn = GetSlotDeformTupleFunction(slot->code_gen);
-		}
-	}
-
 	tp = (char *) tup + tup->t_hoff;
-
-	if (!hasnulls && NULL != slot->slot_deform_tuple_fn)
-	{
-		slot->slot_deform_tuple_fn(tp, values);
-		// All attributes are non-null
-		memset(isnull, 0, sizeof(isnull[0]) * natts);
-		return;
-	}
 
 	/*
 	 * Check whether the first call for this tuple, and initialize or restore

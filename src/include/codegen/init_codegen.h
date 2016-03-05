@@ -32,8 +32,6 @@ void DestructCodeGenerator(void* code_generator);
 
 int (*GetDummyFunction(void* code_generator)) (int);
 
-bool GenerateSlotDeformTuple(void* code_generator, struct tupleDesc* tupleDesc);
-
 void (*GetSlotDeformTupleFunction(void* code_generator)) (char*, void*);
 
 #ifdef __cplusplus
