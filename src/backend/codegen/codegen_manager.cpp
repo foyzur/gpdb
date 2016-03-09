@@ -67,8 +67,7 @@ bool CodeGeneratorManager::GenerateCode() {
 bool CodeGeneratorManager::PrepareGeneratedFunctions() {
 	bool compilation_status = code_generator_->PrepareForExecution(balerion::CodeGenerator::OptimizationLevel::kNone, true);
 
-	if (!compilation_status)
-	{
+	if (!compilation_status) {
 		//elog(DEBUG1, "Cannot compile");
 		return compilation_status;
 	}

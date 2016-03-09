@@ -48,8 +48,7 @@ constexpr char SlotDeformTupleCodeGen::kSlotDeformTupleNamePrefix[];
 SlotDeformTupleCodeGen::SlotDeformTupleCodeGen(TupleTableSlot* slot,
 			SlotDeformTupleFn regular_func_ptr, SlotDeformTupleFn* ptr_to_regular_func_ptr):
 		BasicCodeGen(kSlotDeformTupleNamePrefix, regular_func_ptr, ptr_to_regular_func_ptr),
-		slot_(slot)
-{
+		slot_(slot) {
 
 }
 
@@ -89,13 +88,11 @@ bool SlotDeformTupleCodeGen::GenerateCode(CodeGeneratorManager* manager,
 	int off = 0;
 
 	Form_pg_attribute *att = tupleDesc->attrs;
-	for (int attnum = 0; attnum < natts; attnum++)
-	{
+	for (int attnum = 0; attnum < natts; attnum++) {
 		Form_pg_attribute thisatt = att[attnum];
 		off = att_align(off, thisatt->attalign);
 
-		if (thisatt->attlen < 0)
-		{
+		if (thisatt->attlen < 0) {
 			// TODO: Cleanup code generator
 			return false;
 		}
@@ -118,8 +115,7 @@ bool SlotDeformTupleCodeGen::GenerateCode(CodeGeneratorManager* manager,
 		llvm::Value* colVal = nullptr;
 
 		// Load the value from the calculated input address.
-		switch(thisatt->attlen)
-		{
+		switch(thisatt->attlen) {
 		case sizeof(char):
 			// Read 1 byte at next_address_load
 			colVal = irb->CreateLoad(next_address_load);

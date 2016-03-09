@@ -17,15 +17,13 @@
 
 #include "balerion/code_generator.h"
 
-namespace code_gen
-{
+namespace code_gen {
 
 template<typename FunctionType>
 struct function_traits;
 
 template<typename ReturnType, typename... ArgumentTypes>
-struct function_traits<ReturnType(*)(ArgumentTypes...)>
-{
+struct function_traits<ReturnType(*)(ArgumentTypes...)> {
 public:
 	static auto GetFunctionPointerHelper(balerion::CodeGenerator* code_generator, const std::string& func_name)
     -> ReturnType (*)(ArgumentTypes...) {
@@ -39,8 +37,7 @@ public:
 
 class CodeGeneratorManager;
 
-class CodeGen
-{
+class CodeGen {
 private:
 	static long unique_counter_;
 
@@ -65,8 +62,7 @@ public:
 };
 
 template <class FuncPtrType>
-class BasicCodeGen: public CodeGen
-{
+class BasicCodeGen: public CodeGen {
 private:
 	FuncPtrType regular_func_ptr_;
 	FuncPtrType* ptr_to_chosen_func_ptr_;
@@ -75,7 +71,7 @@ private:
 protected:
 	explicit BasicCodeGen(const std::string& prefix,
 			FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr):
-		regular_func_ptr_(regular_func_ptr), ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr){
+		regular_func_ptr_(regular_func_ptr), ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr) {
 		func_name_ = CodeGen::GenerateUniqueName(prefix);
 		// initialize the usable function pointer to the regular version
 		*ptr_to_chosen_func_ptr = regular_func_ptr;
@@ -83,22 +79,19 @@ protected:
 
 public:
 	// sets the chosen function pointer to the regular version
-	virtual bool SetToRegular()
-	{
+	virtual bool SetToRegular() {
 		assert(nullptr != regular_func_ptr_);
 		*ptr_to_chosen_func_ptr_ = regular_func_ptr_;
 		return true;
 	}
 
 	// sets the chosen function pointer to the code gened version
-	virtual bool SetToGenerated(balerion::CodeGenerator* code_generator)
-	{
+	virtual bool SetToGenerated(balerion::CodeGenerator* code_generator) {
 		auto compiled_func_ptr = function_traits<FuncPtrType>::GetFunctionPointerHelper(code_generator, func_name_);
 		//auto compiled_func_ptr = code_generator->GetFunctionPointer<traits::return_type, traits::arg_type>(func_name_);
 		assert(nullptr != compiled_func_ptr);
 
-		if (nullptr != compiled_func_ptr)
-		{
+		if (nullptr != compiled_func_ptr) {
 			*ptr_to_chosen_func_ptr_ = compiled_func_ptr;
 			return true;
 		}
@@ -107,13 +100,11 @@ public:
 	}
 
 	// prepare for a new code generation; previous one is no longer valid
-	virtual void Reset()
-	{
+	virtual void Reset() {
 		SetToRegular();
 	}
 
-	virtual std::string GetFuncName()
-	{
+	virtual std::string GetFuncName() {
 		return func_name_;
 	}
 

@@ -18,8 +18,7 @@ struct TupleTableSlot;
 
 typedef void (*SlotDeformTupleFn) (struct TupleTableSlot *slot, int natts);
 
-typedef enum CodeGenFuncLifespan
-{
+typedef enum CodeGenFuncLifespan {
 	// does not depend on parameter changes
 	CodeGenFuncLifespan_Parameter_Invariant,
 	// has to be regenerated as the parameter changes

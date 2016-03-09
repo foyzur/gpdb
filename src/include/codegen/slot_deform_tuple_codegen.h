@@ -21,8 +21,7 @@
 #include "access/tupmacs.h"
 #include "catalog/pg_attribute.h"
 
-namespace code_gen
-{
+namespace code_gen {
 class SlotDeformTupleCodeGen: public BasicCodeGen <SlotDeformTupleFn> {
 public:
 	explicit SlotDeformTupleCodeGen(TupleTableSlot* slot,

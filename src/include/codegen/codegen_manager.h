@@ -21,13 +21,11 @@ namespace balerion {
 	class CodeGenerator;
 }
 
-namespace code_gen
-{
+namespace code_gen {
 
 class CodeGen;
 
-class CodeGeneratorManager
-{
+class CodeGeneratorManager {
 private:
 	// CodeGenerator provides a facade to LLVM subsystem
 	std::unique_ptr<balerion::CodeGenerator> code_generator_;

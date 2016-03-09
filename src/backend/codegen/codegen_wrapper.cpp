@@ -69,8 +69,7 @@ void SetActiveCodeGeneratorManager(void* manager) {
 }
 
 void* SlotDeformTupleCodeGen_Enroll(TupleTableSlot* slot, SlotDeformTupleFn regular_func_ptr,
-		SlotDeformTupleFn* ptr_to_regular_func_ptr)
-{
+		SlotDeformTupleFn* ptr_to_regular_func_ptr) {
 	SlotDeformTupleCodeGen* generator = new SlotDeformTupleCodeGen(slot,
 			regular_func_ptr, ptr_to_regular_func_ptr);
 	CodeGeneratorManager* manager = static_cast<CodeGeneratorManager*>(
