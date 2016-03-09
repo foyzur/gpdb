@@ -12,22 +12,36 @@
 #ifndef CODEGEN_MANAGER_H_
 #define CODEGEN_MANAGER_H_
 
-#include "codegen/codegen_manager_c.h"
-#include "codegen/codegen_func_info.h"
+#include <memory>
+#include <vector>
+
+#include "codegen/codegen_wrapper.h"
+
+namespace balerion {
+	class CodeGenerator;
+}
+
+namespace code_gen
+{
+
+class CodeGen;
 
 class CodeGeneratorManager
 {
 private:
-	std::unique_ptr<balerion::CodeGenerator> code_generator_; // CodeGenerator provides a facade to LLVM subsystem
-	std::vector<std::unique_ptr<CodeGenFuncInfo>> allCodeGenedFucInfo; // List of pointers to codegened functions’ info };
+	// CodeGenerator provides a facade to LLVM subsystem
+	std::unique_ptr<balerion::CodeGenerator> code_generator_;
+
+	// list of all enrolled code generators
+	std::vector<std::unique_ptr<CodeGen>> enrolled_code_generators_;
 
 public:
 	// Constructor
-	CodeGeneratorManager();
+	explicit CodeGeneratorManager();
+	~CodeGeneratorManager() = default;
 
-	// Register a new code generator
-	CodeGenFuncInfo* RegisterCodeGenerator(CodeGenFuncLifespan funcLifespan, void* object,
-		CodeGeneratorCallback generator, void* regular_func_pointer, void** called_func_pointer_addr);
+	// Enroll a new code generator
+	bool EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGen* generator);
 
 	// Ask all the generators to generate code
 	bool GenerateCode();
@@ -36,10 +50,11 @@ public:
 	bool PrepareGeneratedFunctions();
 
 	// notifies that the underlying operator has a parameter change
-	bool CodeGeneratorManager_NotifyParameterChange(void* manager);
+	bool NotifyParameterChange();
 
 	// Invalidate all generated functions
 	bool InvalidateGeneratedFunctions();
 };
 
+}
 #endif  // CODEGEN_MANAGER_H_

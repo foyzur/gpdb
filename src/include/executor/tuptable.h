@@ -14,12 +14,12 @@
 #ifndef TUPTABLE_H
 #define TUPTABLE_H
 
+#include "codegen/codegen_wrapper.h"
 #include "access/htup.h"
 #include "access/tupdesc.h"
 #include "access/heapam.h"
 #include "access/memtup.h"
 #include "storage/buf.h"
-#include "codegen/init_codegen.h"
 
 /*----------
  * The executor stores tuples in a "tuple table" which is composed of
@@ -111,14 +111,11 @@
 #define         TTS_SHOULDFREE 	2
 #define         TTS_VIRTUAL     4
 
-// The signature of slot_deform_tuple function
-typedef void (*slot_deform_tuple_fn_ptr)(TupleTableSlot *slot, int natts);
-
 // Interface to the code generation manager for the code generator of slot_deform_tuple
 typedef struct SlotDeformTupleCodeGenInfo
 {
-	void* manager_token;
-	slot_deform_tuple_fn_ptr slot_deform_tuple_fn;
+	void* code_generator;
+	SlotDeformTupleFn slot_deform_tuple_fn;
 } SlotDeformTupleCodeGenInfo;
 
 typedef struct TupleTableSlot

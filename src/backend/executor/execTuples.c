@@ -103,7 +103,7 @@
 #include "utils/typcache.h"
 
 #include "cdb/cdbvars.h"                    /* Gp_segment */
-#include "codegen/code_generator.h"
+#include "codegen/codegen_wrapper.h"
 
 static TupleDesc ExecTypeFromTLInternal(List *targetList,
 					   bool hasoid, bool skipjunk);
@@ -362,9 +362,10 @@ ExecSetSlotDescriptor(TupleTableSlot *slot,		/* slot to change */
 		MemoryContextSwitchTo(oldcontext);
 	}
 
-	slot->slot_deform_tuple_gen_info.slot_deform_tuple_fn = slot_deform_tuple;
-	CodeGeneratorManager_Register(CodeGenFuncLifespan_Parameter_Invariant, slot,
-		GenerateSlotDeformTuple, slot_deform_tuple, &slot->slot_deform_tuple_gen_info.slot_deform_tuple_fn);
+	slot->slot_deform_tuple_gen_info.code_generator = SlotDeformTupleCodeGen_Enroll(slot,
+			slot_deform_tuple, &slot->slot_deform_tuple_gen_info.slot_deform_tuple_fn);
+	/* The enrollment process ensures that the slot_deform_tuple_fn pointer is set to the regular version initially */
+	Assert(slot->slot_deform_tuple_gen_info.slot_deform_tuple_fn == slot_deform_tuple);
 }
 
 /* --------------------------------

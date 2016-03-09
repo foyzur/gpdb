@@ -23,7 +23,7 @@
 #include "utils/hsearch.h"
 #include "gpmon/gpmon.h"                /* gpmon_packet_t */
 #include "utils/tuplestore.h"
-#include "codegen/codegen_manager_c.h"
+#include "codegen/codegen_wrapper.h"
 
 /*
  * partition selector ids start from 1. Sometimes we use 0 to initialize variables

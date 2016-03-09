@@ -9,7 +9,7 @@
 //		Implementation of a code generator manager
 //
 //---------------------------------------------------------------------------
-#include "codegen/codegen_manager.h"
+
 #include <cstdint>
 #include <string>
 
@@ -17,6 +17,9 @@
 #include "balerion/code_generator.h"
 #include "balerion/utility.h"
 #include "balerion/instance_method_wrappers.h"
+
+#include "codegen/codegen_manager.h"
+#include "codegen/codegen.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -37,31 +40,57 @@
 //#include "access/tupmacs.h"
 //#include "c.h"
 #include "catalog/pg_attribute.h"
+#include "utils/elog.h"
 
+using namespace code_gen;
 
 CodeGeneratorManager::CodeGeneratorManager() {
 	code_generator_.reset(new balerion::CodeGenerator("test_module"));
 }
 
-CodeGeneratorManager::~CodeGeneratorManager() {
-	allCodeGenedFucInfo.clear();
-}
-
-CodeGenFuncInfo* CodeGeneratorManager::RegisterCodeGenerator(CodeGenFuncLifespan funcLifespan, void* object,
-		CodeGeneratorCallback generator, void* regular_func_pointer, void** called_func_pointer_addr) {
+bool CodeGeneratorManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGen* generator) {
 
 	assert(funcLifespan == CodeGenFuncLifespan_Parameter_Invariant);
-//	std::unique_ptr<CodeGenFuncInfo>* code_gen_func_inf =
-//			std::unique_ptr<CodeGenFuncInfo>(new CodeGenFuncInfo(object,
-//					generator, regular_func_pointer, called_func_pointer_addr));
-	allCodeGenedFucInfo.emplace_back(object,
-			generator, regular_func_pointer, called_func_pointer_addr);
-	return allCodeGenedFucInfo.back();
+	assert(nullptr != generator);
+	enrolled_code_generators_.emplace_back(generator);
+	return true;
 }
 
 bool CodeGeneratorManager::GenerateCode() {
-	for(auto code_gen_func_info : allCodeGenedFucInfo) {
-		code_gen_func_info.get()->GenerateCode(this, code_generator_.get());
+	for(auto& generator : enrolled_code_generators_) {
+		generator->GenerateCode(this, code_generator_.get());
 	}
+
+	return true;
 }
 
+bool CodeGeneratorManager::PrepareGeneratedFunctions() {
+	bool compilation_status = code_generator_->PrepareForExecution(balerion::CodeGenerator::OptimizationLevel::kNone, true);
+
+	if (!compilation_status)
+	{
+		//elog(DEBUG1, "Cannot compile");
+		return compilation_status;
+	}
+
+	balerion::CodeGenerator* llvm_helper = code_generator_.get();
+	for(auto& generator : enrolled_code_generators_) {
+		generator->SetToGenerated(llvm_helper);
+	}
+
+	return true;
+}
+
+// notifies that the underlying operator has a parameter change
+bool CodeGeneratorManager::NotifyParameterChange() {
+	// no support for parameter change yet
+	assert(false);
+	return false;
+}
+
+// Invalidate all generated functions
+bool CodeGeneratorManager::InvalidateGeneratedFunctions() {
+	// no support for invalidation of generated function
+	assert(false);
+	return false;
+}

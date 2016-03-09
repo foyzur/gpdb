@@ -9,7 +9,7 @@
 //		Contains different code generators
 //
 //---------------------------------------------------------------------------
-#include "codegen/code_generator.h"
+#include "codegen/slot_deform_tuple_codegen.h"
 #include <cstdint>
 #include <string>
 
@@ -33,17 +33,29 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/Casting.h"
-//#include "access/htup.h"
-//#include "access/tupmacs.h"
-//#include "c.h"
+
+#include "postgres.h"
+#include "c.h"
+#include "access/htup.h"
+#include "access/tupmacs.h"
 #include "catalog/pg_attribute.h"
+#include "executor/tuptable.h"
 
-char* GenerateSlotDeformTuple(void *object, void* manager, void* code_gen) {
-	TupleTableSlot* tts = (TupleTableSlot *) object;
-	balerion::CodeGenerator *code_generator = (balerion::CodeGenerator *) code_gen;
-	std::string name = "slot_deform_tuple_gen";
+using namespace code_gen;
 
-	TupleDesc tupleDesc = tts->tts_tupleDescriptor;
+constexpr char SlotDeformTupleCodeGen::kSlotDeformTupleNamePrefix[];
+
+SlotDeformTupleCodeGen::SlotDeformTupleCodeGen(TupleTableSlot* slot,
+			SlotDeformTupleFn regular_func_ptr, SlotDeformTupleFn* ptr_to_regular_func_ptr):
+		BasicCodeGen(kSlotDeformTupleNamePrefix, regular_func_ptr, ptr_to_regular_func_ptr),
+		slot_(slot)
+{
+
+}
+
+bool SlotDeformTupleCodeGen::GenerateCode(CodeGeneratorManager* manager,
+			balerion::CodeGenerator* code_generator) {
+	TupleDesc tupleDesc = slot_->tts_tupleDescriptor;
 
 	int natts = tupleDesc->natts;
 
@@ -51,13 +63,12 @@ char* GenerateSlotDeformTuple(void *object, void* manager, void* code_gen) {
 
 	if (tupleDesc->natts != 1 || tupleDesc->attrs[0]->attlen != sizeof(int32))
 	{
-		return NULL;
+		return false;
 	}
 
 	// void slot_deform_tuple_func(char* data_start_adress, void* values, void* isnull)
     llvm::Function* slot_deform_tuple_func
-  	  = code_generator->CreateFunction<void, char*, int64*>(
-  			  name);
+  	  = function_traits<SlotDeformTupleFn>::CreateFunctionHelper(code_generator, GetFuncName());
 
     // BasicBlocks for function entry.
     llvm::BasicBlock* entry_block = code_generator->CreateBasicBlock(
@@ -86,7 +97,7 @@ char* GenerateSlotDeformTuple(void *object, void* manager, void* code_gen) {
 		if (thisatt->attlen < 0)
 		{
 			// TODO: Cleanup code generator
-			return NULL;
+			return false;
 		}
 
 		// Load tp + off
@@ -148,7 +159,5 @@ char* GenerateSlotDeformTuple(void *object, void* manager, void* code_gen) {
 //	slot->PRIVATE_tts_nvalid = attnum;
 //	slot->PRIVATE_tts_off = off;
 //	slot->PRIVATE_tts_slow = slow;
-    char* ret_val = new char[name.size() + 1];
-    std::strcpy(ret_val, name.c_str());
-    return ret_val;
+    return true;
 }

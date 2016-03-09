@@ -31,6 +31,7 @@
  *
  *-------------------------------------------------------------------------
  */
+#include "../../include/codegen/codegen_wrapper.h"
 #include "postgres.h"
 #include "gpmon/gpmon.h"
 
@@ -102,7 +103,6 @@
 #include "cdb/memquota.h"
 #include "cdb/cdbtargeteddispatch.h"
 
-#include "codegen/init_codegen.h"
 
 extern bool cdbpathlocus_querysegmentcatalogs;
 
@@ -262,8 +262,6 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		plannedStmt->memoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_EXECUTOR);
 	}
 
-	if (NULL == )
-
 	START_MEMORY_ACCOUNT(plannedStmt->memoryAccount);
 
 	Assert(queryDesc->plannedstmt->intoPolicy == NULL
@@ -327,21 +325,21 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate = CreateExecutorState();
 	queryDesc->estate = estate;
 
-	if (memory_profiler_dataset_size > 0)
-	{
-		int retVal = 0;
-		void* code_gen = ConstructCodeGenerator();
-		PrepareForExecution(code_gen);
-		int (*dummy_func)(int) = GetDummyFunction(code_gen);
-
-		for (int i = 0; i < 3; ++i)
-		{
-			retVal = dummy_func(retVal);
-			elog(LOG, "CodeGen gave us: %d", retVal);
-		}
-
-		DestructCodeGenerator(code_gen);
-	}
+//	if (memory_profiler_dataset_size > 0)
+//	{
+//		int retVal = 0;
+//		void* code_gen = ConstructCodeGenerator();
+//		PrepareForExecution(code_gen);
+//		int (*dummy_func)(int) = GetDummyFunction(code_gen);
+//
+//		for (int i = 0; i < 3; ++i)
+//		{
+//			retVal = dummy_func(retVal);
+//			elog(LOG, "CodeGen gave us: %d", retVal);
+//		}
+//
+//		DestructCodeGenerator(code_gen);
+//	}
 
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
