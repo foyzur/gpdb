@@ -17,6 +17,11 @@
 
 #include "balerion/code_generator.h"
 
+extern "C"
+{
+#include "utils/elog.h"
+}
+
 namespace code_gen
 {
 
@@ -43,12 +48,19 @@ class CodeGen
 {
 private:
 	static long unique_counter_;
+	std::string func_name_;
+	bool is_generated_;
 
 protected:
 	static std::string GenerateUniqueName(const std::string& prefix);
 
 public:
-	virtual bool GenerateCode(CodeGeneratorManager* manager, balerion::CodeGenerator* code_generator) = 0;
+	virtual bool GenerateCode(CodeGeneratorManager* manager, balerion::CodeGenerator* code_generator) {
+		is_generated_ = GenerateCodeImpl(manager, code_generator);
+	}
+
+	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager, balerion::CodeGenerator* code_generator) = 0;
+
 	//
 	// sets the chosen function pointer to the regular version
 	virtual bool SetToRegular() = 0;
@@ -58,9 +70,21 @@ public:
 	virtual void Reset() = 0;
 
 	// returns the generated unique function name
-	virtual std::string GetFuncName() = 0;
+	virtual std::string GetFuncName()
+	{
+		return func_name_;
+	}
 
-	explicit CodeGen() = default;
+	virtual const char* GetFunctionPrefix() = 0;
+
+	bool IsGenerated() {
+		return is_generated_;
+	}
+
+	explicit CodeGen(const std::string& prefix):func_name_(CodeGen::GenerateUniqueName(prefix)), is_generated_(false)
+	{
+
+	}
 	virtual ~CodeGen() = default;
 };
 
@@ -70,30 +94,46 @@ class BasicCodeGen: public CodeGen
 private:
 	FuncPtrType regular_func_ptr_;
 	FuncPtrType* ptr_to_chosen_func_ptr_;
-	std::string func_name_;
 
 protected:
-	explicit BasicCodeGen(const std::string& prefix,
-			FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr):
-		regular_func_ptr_(regular_func_ptr), ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr){
-		func_name_ = CodeGen::GenerateUniqueName(prefix);
+	explicit BasicCodeGen(const std::string& prefix, FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr):
+		CodeGen(prefix), regular_func_ptr_(regular_func_ptr), ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr) {
 		// initialize the usable function pointer to the regular version
-		*ptr_to_chosen_func_ptr = regular_func_ptr;
+		SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
 	}
 
 public:
+	static bool SetToRegular(FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr)
+	{
+		*ptr_to_chosen_func_ptr = regular_func_ptr;
+		return true;
+	}
+
 	// sets the chosen function pointer to the regular version
 	virtual bool SetToRegular()
 	{
 		assert(nullptr != regular_func_ptr_);
-		*ptr_to_chosen_func_ptr_ = regular_func_ptr_;
+		SetToRegular(regular_func_ptr_, ptr_to_chosen_func_ptr_);
 		return true;
+	}
+
+	FuncPtrType GetRegularFuncPointer()
+	{
+		return regular_func_ptr_;
 	}
 
 	// sets the chosen function pointer to the code gened version
 	virtual bool SetToGenerated(balerion::CodeGenerator* code_generator)
 	{
-		auto compiled_func_ptr = function_traits<FuncPtrType>::GetFunctionPointerHelper(code_generator, func_name_);
+		if (false == IsGenerated()) {
+			assert(*ptr_to_chosen_func_ptr_ == regular_func_ptr_);
+			return false;
+		}
+
+		elog(WARNING, "SetToGenerated: %p, %s", code_generator, GetFuncName().c_str());
+
+		auto compiled_func_ptr = function_traits<FuncPtrType>::GetFunctionPointerHelper(code_generator, GetFuncName());
+		elog(WARNING, "compiled_func_ptr: %p", compiled_func_ptr);
 		//auto compiled_func_ptr = code_generator->GetFunctionPointer<traits::return_type, traits::arg_type>(func_name_);
 		assert(nullptr != compiled_func_ptr);
 
@@ -110,11 +150,6 @@ public:
 	virtual void Reset()
 	{
 		SetToRegular();
-	}
-
-	virtual std::string GetFuncName()
-	{
-		return func_name_;
 	}
 
 	virtual ~BasicCodeGen() = default;

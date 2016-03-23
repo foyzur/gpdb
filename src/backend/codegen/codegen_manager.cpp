@@ -40,7 +40,10 @@
 //#include "access/tupmacs.h"
 //#include "c.h"
 #include "catalog/pg_attribute.h"
+extern "C"
+{
 #include "utils/elog.h"
+}
 
 using namespace code_gen;
 
@@ -65,11 +68,12 @@ bool CodeGeneratorManager::GenerateCode() {
 }
 
 bool CodeGeneratorManager::PrepareGeneratedFunctions() {
+	elog(WARNING, "Compiling everything: %p", code_generator_.get());
 	bool compilation_status = code_generator_->PrepareForExecution(balerion::CodeGenerator::OptimizationLevel::kNone, true);
 
 	if (!compilation_status)
 	{
-		//elog(DEBUG1, "Cannot compile");
+		elog(WARNING, "Cannot compile");
 		return compilation_status;
 	}
 

@@ -31,9 +31,10 @@ public:
 
 	virtual ~SlotDeformTupleCodeGen() = default;
 
-	virtual bool GenerateCode(CodeGeneratorManager* manager,
+	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager,
 			balerion::CodeGenerator* code_generator);
 
+	virtual const char* GetFunctionPrefix();
 private:
 	static constexpr char kSlotDeformTupleNamePrefix[] = "slot_deform_tuple";
 	TupleTableSlot* slot_;

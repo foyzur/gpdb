@@ -26,11 +26,13 @@ using namespace code_gen;
 
 // the current code generator manager that oversees all code generators
 static void* ActiveCodeGeneratorManager = nullptr;
+static bool is_codegen_initalized = false;
 
 // Perform global set-up tasks for Balerion codegen library. Returns 0 on
 // success, nonzero on error.
 int InitCodeGen() {
-  return balerion::CodeGenerator::InitializeGlobal() ? 0 : 1;
+	is_codegen_initalized = balerion::CodeGenerator::InitializeGlobal();
+	return !is_codegen_initalized;
 }
 
 // creates a manager for an operator
@@ -69,12 +71,19 @@ void SetActiveCodeGeneratorManager(void* manager) {
 }
 
 void* SlotDeformTupleCodeGen_Enroll(TupleTableSlot* slot, SlotDeformTupleFn regular_func_ptr,
-		SlotDeformTupleFn* ptr_to_regular_func_ptr)
+		SlotDeformTupleFn* ptr_to_chosen_func_ptr)
 {
-	SlotDeformTupleCodeGen* generator = new SlotDeformTupleCodeGen(slot,
-			regular_func_ptr, ptr_to_regular_func_ptr);
 	CodeGeneratorManager* manager = static_cast<CodeGeneratorManager*>(
 			GetActiveCodeGeneratorManager());
+
+	if (nullptr == manager) //|| 0 == is_codegen_initalized)
+	{
+		BasicCodeGen<SlotDeformTupleFn>::SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
+		return nullptr;
+	}
+
+	SlotDeformTupleCodeGen* generator = new SlotDeformTupleCodeGen(slot,
+			regular_func_ptr, ptr_to_chosen_func_ptr);
 	assert(nullptr != manager);
 	bool is_enrolled = manager->EnrollCodeGenerator(CodeGenFuncLifespan_Parameter_Invariant,
 			generator);

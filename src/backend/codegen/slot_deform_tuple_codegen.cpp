@@ -53,111 +53,80 @@ SlotDeformTupleCodeGen::SlotDeformTupleCodeGen(TupleTableSlot* slot,
 
 }
 
-bool SlotDeformTupleCodeGen::GenerateCode(CodeGeneratorManager* manager,
+template <typename FuncType>
+void elogged_func(FuncType* func_type) {
+
+	return func_type();
+}
+
+//void elog_wrapper(const std::string& log_message)
+//{
+//	elog_start(__FILE__, __LINE__, PG_FUNCNAME_MACRO);
+//	elog_finish(INFO, log_message.c_str());
+//}
+
+//template <const char* func_name, typename ReturnType, typename... ArgumentTypes>
+template <typename ReturnType, typename... ArgumentTypes>
+ReturnType wrap_func(char* func_name, void* f, ArgumentTypes... arg) {
+	elog(INFO, "Calling wrapped function: %s", func_name);
+	reinterpret_cast<ReturnType (*)(ArgumentTypes...)>(f)(arg ...);
+}
+
+template <typename ReturnType, typename... ArgumentTypes>
+void MakeWrapperFunction(CodeGen *code_gen, balerion::CodeGenerator* code_generator,
+    ReturnType (*external_function)(ArgumentTypes...),
+    const std::string& wrapper_function_name) {
+  // Register 'external_function' in 'code_generator_' and check that it has
+  // the expected type-signature.
+
+  llvm::Function* llvm_external_function
+      = code_generator->RegisterExternalFunction(&wrap_func<ReturnType, ArgumentTypes...>);
+  assert(llvm_external_function != nullptr);
+  //wrap_func<void, const std::string&>(elog_wrapper, "test");
+  // Create a wrapper function in 'code_generator_' with the same
+  // type-signature that merely forwards its arguments to the external
+  // function as-is.
+  llvm::Function* wrapper_function
+      = code_generator->CreateFunction<ReturnType, ArgumentTypes...>(
+          wrapper_function_name);
+
+  llvm::BasicBlock* wrapper_function_body
+      = code_generator->CreateBasicBlock("wrapper_fn_body",
+                                          wrapper_function);
+
+  code_generator->ir_builder()->SetInsertPoint(wrapper_function_body);
+  std::vector<llvm::Value*> forwarded_args;
+
+  llvm::Value* func_name_llvm = code_generator->GetConstant(code_gen->GetFunctionPrefix());
+
+  forwarded_args.push_back(func_name_llvm);
+  // push the function to call inside wrapper
+  forwarded_args.push_back(code_generator->GetConstant(reinterpret_cast<void*>(external_function)));
+
+  for (llvm::Argument& arg : wrapper_function->args()) {
+    forwarded_args.push_back(&arg);
+  }
+  llvm::CallInst* call = code_generator->ir_builder()->CreateCall(
+      llvm_external_function,
+      forwarded_args);
+
+  // Return the result of the call, or void if the function returns void.
+  if (std::is_same<ReturnType, void>::value) {
+    code_generator->ir_builder()->CreateRetVoid();
+  } else {
+    code_generator->ir_builder()->CreateRet(call);
+  }
+}
+
+bool SlotDeformTupleCodeGen::GenerateCodeImpl(CodeGeneratorManager* manager,
 			balerion::CodeGenerator* code_generator) {
-	TupleDesc tupleDesc = slot_->tts_tupleDescriptor;
+	elog(WARNING, "GenerateCode: %p, %s", code_generator, GetFuncName().c_str());
 
-	int natts = tupleDesc->natts;
+	MakeWrapperFunction(this, code_generator, GetRegularFuncPointer(), GetFuncName());
 
-	static_assert(sizeof(Datum) == sizeof(int64), "Expecting 64 bit datum");
+	return true;
+}
 
-	if (tupleDesc->natts != 1 || tupleDesc->attrs[0]->attlen != sizeof(int32))
-	{
-		return false;
-	}
-
-	// void slot_deform_tuple_func(char* data_start_adress, void* values, void* isnull)
-    llvm::Function* slot_deform_tuple_func
-  	  = function_traits<SlotDeformTupleFn>::CreateFunctionHelper(code_generator, GetFuncName());
-
-    // BasicBlocks for function entry.
-    llvm::BasicBlock* entry_block = code_generator->CreateBasicBlock(
-  	  "entry", slot_deform_tuple_func);
-
-    llvm::Value* input = balerion::ArgumentByPosition(slot_deform_tuple_func, 0);
-    llvm::Value* out_values = balerion::ArgumentByPosition(slot_deform_tuple_func, 1);
-
-	auto irb =
-			code_generator->ir_builder();
-
-	irb->SetInsertPoint(entry_block);
-
-    llvm::Value* true_const = code_generator->GetConstant(true);
-    llvm::Value* datum_size_const = code_generator->GetConstant(sizeof(Datum));
-    llvm::Value* bool_size_const = code_generator->GetConstant(sizeof(bool));
-
-	int off = 0;
-
-	Form_pg_attribute *att = tupleDesc->attrs;
-	for (int attnum = 0; attnum < natts; attnum++)
-	{
-		Form_pg_attribute thisatt = att[attnum];
-		off = att_align(off, thisatt->attalign);
-
-		if (thisatt->attlen < 0)
-		{
-			// TODO: Cleanup code generator
-			return false;
-		}
-
-		// Load tp + off
-		// store value
-		// store isnull = true
-		// add value + sizeof(Datum)
-		// add isnull + sizeof(bool)
-
-		// The next address of the input array where we need to read.
-		llvm::Value* next_address_load =
-			irb->CreateInBoundsGEP(input,
-				{code_generator->GetConstant(off)});
-
-		llvm::Value* next_address_store =
-			irb->CreateInBoundsGEP(out_values,
-				{code_generator->GetConstant(attnum)});
-
-		llvm::Value* colVal = nullptr;
-
-		// Load the value from the calculated input address.
-		switch(thisatt->attlen)
-		{
-		case sizeof(char):
-			// Read 1 byte at next_address_load
-			colVal = irb->CreateLoad(next_address_load);
-			// store colVal into out_values[attnum]
-			break;
-		case sizeof(int16):
-			colVal = irb->CreateLoad(code_generator->GetType<int16>(),
-					irb->CreateBitCast(next_address_load, code_generator->GetType<int16*>()));
-			break;
-		case sizeof(int32):
-			colVal = irb->CreateLoad(code_generator->GetType<int32>(),
-					irb->CreateBitCast(next_address_load, code_generator->GetType<int32*>()));
-			break;
-		case sizeof(int64):
-			colVal = irb->CreateLoad(code_generator->GetType<int64>(),
-					irb->CreateBitCast(next_address_load, code_generator->GetType<int64*>()));
-			break;
-		default:
-			//TODO Cleanup
-			return false;
-		}
-
-		llvm::Value* int64ColVal = irb->CreateZExt(colVal, code_generator->GetType<int64>());
-		irb->CreateStore(int64ColVal, next_address_store);
-
-		llvm::LoadInst* load_instruction =
-			code_generator->ir_builder()->CreateLoad(next_address_load, "input");
-
-		off += thisatt->attlen;
-	}
-
-    irb->CreateRetVoid();
-
-//	/*
-//	 * Save state for next execution
-//	 */
-//	slot->PRIVATE_tts_nvalid = attnum;
-//	slot->PRIVATE_tts_off = off;
-//	slot->PRIVATE_tts_slow = slow;
-    return true;
+const char* SlotDeformTupleCodeGen::GetFunctionPrefix() {
+	return kSlotDeformTupleNamePrefix;
 }

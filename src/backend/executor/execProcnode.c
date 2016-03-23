@@ -814,6 +814,8 @@ ExecProcNode(PlanState *node)
 {
 	TupleTableSlot *result = NULL;
 
+	START_CODE_GENERATOR_MANAGER(node->CodeGeneratorManager);
+	{
 	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
 	{
 
@@ -1233,6 +1235,8 @@ Exec_Jmp_Done:
 
 	}
 	END_MEMORY_ACCOUNT();
+	}
+	END_CODE_GENERATOR_MANAGER();
 	return result;
 }
 
