@@ -130,6 +130,8 @@
 #include "utils/debugbreak.h"
 #include "pg_trace.h"
 
+#include "codegen/codegen_wrapper.h"
+
 #ifdef CDB_TRACE_EXECUTOR
 #include "nodes/print.h"
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
@@ -220,6 +222,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	int origExecutingSliceId = estate->currentExecutingSliceId;
 
 	MemoryAccount* curMemoryAccount = NULL;
+
+	void* codeGenManager = CodeGeneratorManager_Create();
+	START_CODE_GENERATOR_MANAGER(codeGenManager);
+	{
+
 
 	/*
 	 * Is current plan node supposed to execute in current slice?
@@ -745,7 +752,13 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	if (result != NULL)
 	{
 		SAVE_EXECUTOR_MEMORY_ACCOUNT(result, curMemoryAccount);
+		result->CodeGeneratorManager = codeGenManager;
+		CodeGeneratorManager_GenerateCode(codeGenManager);
+		CodeGeneratorManager_PrepareGeneratedFunctions(codeGenManager);
 	}
+	}
+	END_CODE_GENERATOR_MANAGER();
+
 	return result;
 }
 
@@ -1742,6 +1755,10 @@ ExecEndNode(PlanState *node)
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
 	}
+
+	Assert(NULL != node->CodeGeneratorManager);
+	CodeGeneratorManager_Destroy(node->CodeGeneratorManager);
+	node->CodeGeneratorManager = NULL;
 
 	estate->currentSliceIdInPlan = origSliceIdInPlan;
 	estate->currentExecutingSliceId = origExecutingSliceId;

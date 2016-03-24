@@ -151,7 +151,7 @@ set_target_properties(
 # with the gpcodegen shared library to create a binary SUBSYS.o as expected by
 # GPDB make system. We invoke the linker with -nostdlib since we don't really
 # want to create a full executable.
-add_executable(SUBSYS.o init_codegen.cc)
+add_executable(SUBSYS.o codegen.cc codegen_manager.cc codegen_wrapper.cc slot_deform_tuple_codegen.cc)
 set_target_properties(SUBSYS.o
     PROPERTIES
     LINK_FLAGS "-Wl,-r -nostdlib")

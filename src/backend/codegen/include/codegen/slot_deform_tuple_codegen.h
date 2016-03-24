@@ -32,7 +32,7 @@ public:
 	virtual ~SlotDeformTupleCodeGen() = default;
 
 	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager,
-			balerion::CodeGenerator* code_generator);
+			gpcodegen::CodeGenerator* code_generator);
 
 	virtual const char* GetFunctionPrefix();
 private:

@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include "balerion/code_generator.h"
+#include "codegen/utils/code_generator.h"
 
 extern "C"
 {
@@ -32,12 +32,12 @@ template<typename ReturnType, typename... ArgumentTypes>
 struct function_traits<ReturnType(*)(ArgumentTypes...)>
 {
 public:
-	static auto GetFunctionPointerHelper(balerion::CodeGenerator* code_generator, const std::string& func_name)
+	static auto GetFunctionPointerHelper(gpcodegen::CodeGenerator* code_generator, const std::string& func_name)
     -> ReturnType (*)(ArgumentTypes...) {
 		return code_generator->GetFunctionPointer<ReturnType, ArgumentTypes...>(func_name);
 	}
 
-	static llvm::Function* CreateFunctionHelper(balerion::CodeGenerator* code_generator, const std::string& func_name) {
+	static llvm::Function* CreateFunctionHelper(gpcodegen::CodeGenerator* code_generator, const std::string& func_name) {
 		return code_generator->CreateFunction<ReturnType, ArgumentTypes...>(func_name);
 	}
 };
@@ -55,17 +55,17 @@ protected:
 	static std::string GenerateUniqueName(const std::string& prefix);
 
 public:
-	virtual bool GenerateCode(CodeGeneratorManager* manager, balerion::CodeGenerator* code_generator) {
+	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) {
 		is_generated_ = GenerateCodeImpl(manager, code_generator);
 	}
 
-	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager, balerion::CodeGenerator* code_generator) = 0;
+	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
 
 	//
 	// sets the chosen function pointer to the regular version
 	virtual bool SetToRegular() = 0;
 	// sets the chosen function pointer to the code gened version
-	virtual bool SetToGenerated(balerion::CodeGenerator* code_generator) = 0;
+	virtual bool SetToGenerated(gpcodegen::CodeGenerator* code_generator) = 0;
 	// prepare for a new code generation; previous one is no longer valid
 	virtual void Reset() = 0;
 
@@ -123,7 +123,7 @@ public:
 	}
 
 	// sets the chosen function pointer to the code gened version
-	virtual bool SetToGenerated(balerion::CodeGenerator* code_generator)
+	virtual bool SetToGenerated(gpcodegen::CodeGenerator* code_generator)
 	{
 		if (false == IsGenerated()) {
 			assert(*ptr_to_chosen_func_ptr_ == regular_func_ptr_);

@@ -13,10 +13,10 @@
 #include <cstdint>
 #include <string>
 
-#include "balerion/clang_compiler.h"
-#include "balerion/code_generator.h"
-#include "balerion/utility.h"
-#include "balerion/instance_method_wrappers.h"
+#include "codegen/utils/clang_compiler.h"
+#include "codegen/utils/code_generator.h"
+#include "codegen/utils/utility.h"
+#include "codegen/utils/instance_method_wrappers.h"
 
 #include "codegen/codegen_manager.h"
 #include "codegen/codegen.h"
@@ -48,7 +48,7 @@ extern "C"
 using namespace code_gen;
 
 CodeGeneratorManager::CodeGeneratorManager() {
-	code_generator_.reset(new balerion::CodeGenerator("test_module"));
+	code_generator_.reset(new gpcodegen::CodeGenerator("test_module"));
 }
 
 bool CodeGeneratorManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGen* generator) {
@@ -69,7 +69,7 @@ bool CodeGeneratorManager::GenerateCode() {
 
 bool CodeGeneratorManager::PrepareGeneratedFunctions() {
 	elog(WARNING, "Compiling everything: %p", code_generator_.get());
-	bool compilation_status = code_generator_->PrepareForExecution(balerion::CodeGenerator::OptimizationLevel::kNone, true);
+	bool compilation_status = code_generator_->PrepareForExecution(gpcodegen::CodeGenerator::OptimizationLevel::kNone, true);
 
 	if (!compilation_status)
 	{
@@ -77,7 +77,7 @@ bool CodeGeneratorManager::PrepareGeneratedFunctions() {
 		return compilation_status;
 	}
 
-	balerion::CodeGenerator* llvm_helper = code_generator_.get();
+	gpcodegen::CodeGenerator* llvm_helper = code_generator_.get();
 	for(auto& generator : enrolled_code_generators_) {
 		generator->SetToGenerated(llvm_helper);
 	}

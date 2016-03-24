@@ -10,7 +10,7 @@
 //
 //---------------------------------------------------------------------------
 
-#include "balerion/code_generator.h"
+#include "codegen/utils/code_generator.h"
 #include "codegen/codegen_wrapper.h"
 #include "codegen/codegen_manager.h"
 #include "codegen/slot_deform_tuple_codegen.h"
@@ -28,10 +28,10 @@ using namespace code_gen;
 static void* ActiveCodeGeneratorManager = nullptr;
 static bool is_codegen_initalized = false;
 
-// Perform global set-up tasks for Balerion codegen library. Returns 0 on
+// Perform global set-up tasks for code generation. Returns 0 on
 // success, nonzero on error.
 int InitCodeGen() {
-	is_codegen_initalized = balerion::CodeGenerator::InitializeGlobal();
+	is_codegen_initalized = gpcodegen::CodeGenerator::InitializeGlobal();
 	return !is_codegen_initalized;
 }
 

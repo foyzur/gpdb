@@ -13,10 +13,10 @@
 #include <cstdint>
 #include <string>
 
-#include "balerion/clang_compiler.h"
-#include "balerion/code_generator.h"
-#include "balerion/utility.h"
-#include "balerion/instance_method_wrappers.h"
+#include "codegen/utils/clang_compiler.h"
+#include "codegen/utils/code_generator.h"
+#include "codegen/utils/utility.h"
+#include "codegen/utils/instance_method_wrappers.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -73,7 +73,7 @@ ReturnType wrap_func(char* func_name, void* f, ArgumentTypes... arg) {
 }
 
 template <typename ReturnType, typename... ArgumentTypes>
-void MakeWrapperFunction(CodeGen *code_gen, balerion::CodeGenerator* code_generator,
+void MakeWrapperFunction(CodeGen *code_gen, gpcodegen::CodeGenerator* code_generator,
     ReturnType (*external_function)(ArgumentTypes...),
     const std::string& wrapper_function_name) {
   // Register 'external_function' in 'code_generator_' and check that it has
@@ -119,7 +119,7 @@ void MakeWrapperFunction(CodeGen *code_gen, balerion::CodeGenerator* code_genera
 }
 
 bool SlotDeformTupleCodeGen::GenerateCodeImpl(CodeGeneratorManager* manager,
-			balerion::CodeGenerator* code_generator) {
+			gpcodegen::CodeGenerator* code_generator) {
 	elog(WARNING, "GenerateCode: %p, %s", code_generator, GetFuncName().c_str());
 
 	MakeWrapperFunction(this, code_generator, GetRegularFuncPointer(), GetFuncName());
