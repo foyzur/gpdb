@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "codegen/utils/code_generator.h"
+#include "codegen/utils/function_wrappers.h"
 
 extern "C"
 {
@@ -24,24 +25,6 @@ extern "C"
 
 namespace code_gen
 {
-
-template<typename FunctionType>
-struct function_traits;
-
-template<typename ReturnType, typename... ArgumentTypes>
-struct function_traits<ReturnType(*)(ArgumentTypes...)>
-{
-public:
-	static auto GetFunctionPointerHelper(gpcodegen::CodeGenerator* code_generator, const std::string& func_name)
-    -> ReturnType (*)(ArgumentTypes...) {
-		return code_generator->GetFunctionPointer<ReturnType, ArgumentTypes...>(func_name);
-	}
-
-	static llvm::Function* CreateFunctionHelper(gpcodegen::CodeGenerator* code_generator, const std::string& func_name) {
-		return code_generator->CreateFunction<ReturnType, ArgumentTypes...>(func_name);
-	}
-};
-
 class CodeGeneratorManager;
 
 class CodeGen
@@ -132,7 +115,7 @@ public:
 
 		elog(WARNING, "SetToGenerated: %p, %s", code_generator, GetFuncName().c_str());
 
-		auto compiled_func_ptr = function_traits<FuncPtrType>::GetFunctionPointerHelper(code_generator, GetFuncName());
+		auto compiled_func_ptr = gpcodegen::FunctionTraitWrapper<FuncPtrType>::GetFunctionPointerHelper(code_generator, GetFuncName());
 		elog(WARNING, "compiled_func_ptr: %p", compiled_func_ptr);
 		//auto compiled_func_ptr = code_generator->GetFunctionPointer<traits::return_type, traits::arg_type>(func_name_);
 		assert(nullptr != compiled_func_ptr);
