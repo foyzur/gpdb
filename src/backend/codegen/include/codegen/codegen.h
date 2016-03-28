@@ -21,7 +21,6 @@
 extern "C"
 {
 #include "utils/elog.h"
-#include "utils/guc.h"
 }
 
 namespace code_gen
@@ -96,10 +95,8 @@ public:
 		}
 
 		elog(WARNING, "SetToGenerated: %p, %s", code_generator, GetFuncName().c_str());
-		FuncPtrType compiled_func_ptr = nullptr;
-		if (memory_profiler_dataset_size == 10) {
-		  compiled_func_ptr = code_generator->GetFunctionPointerTypeDef<FuncPtrType>(GetFuncName());
-		}
+		auto compiled_func_ptr = code_generator->GetFunctionPointerTypeDef<FuncPtrType>(GetFuncName());
+
 		elog(WARNING, "compiled_func_ptr: %p", compiled_func_ptr);
 		//auto compiled_func_ptr = code_generator->GetFunctionPointer<traits::return_type, traits::arg_type>(func_name_);
 		//assert(nullptr != compiled_func_ptr);
