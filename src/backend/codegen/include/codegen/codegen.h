@@ -31,20 +31,14 @@ class CodeGen
 {
 private:
 	static long unique_counter_;
-	std::string func_name_;
-	bool is_generated_;
 
 protected:
 	static std::string GenerateUniqueName(const std::string& prefix);
 
 public:
-	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) {
-		is_generated_ = GenerateCodeImpl(manager, code_generator);
-	}
+	virtual ~CodeGen() = default;
 
-	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
-
-	//
+	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
 	// sets the chosen function pointer to the regular version
 	virtual bool SetToRegular() = 0;
 	// sets the chosen function pointer to the code gened version
@@ -53,61 +47,47 @@ public:
 	virtual void Reset() = 0;
 
 	// returns the generated unique function name
-	virtual std::string GetFuncName()
-	{
-		return func_name_;
-	}
-
+	virtual std::string GetFuncName() = 0;
 	virtual const char* GetFunctionPrefix() = 0;
-
-	bool IsGenerated() {
-		return is_generated_;
-	}
-
-	explicit CodeGen(const std::string& prefix):func_name_(CodeGen::GenerateUniqueName(prefix)), is_generated_(false)
-	{
-
-	}
-	virtual ~CodeGen() = default;
+	virtual bool IsGenerated() = 0;
 };
 
 template <class FuncPtrType>
 class BasicCodeGen: public CodeGen
 {
 private:
+	std::string func_name_;
 	FuncPtrType regular_func_ptr_;
 	FuncPtrType* ptr_to_chosen_func_ptr_;
+	bool is_generated_;
 
 protected:
 	explicit BasicCodeGen(const std::string& prefix, FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr):
-		CodeGen(prefix), regular_func_ptr_(regular_func_ptr), ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr) {
+		func_name_(CodeGen::GenerateUniqueName(prefix)), regular_func_ptr_(regular_func_ptr),
+		ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr), is_generated_(false) {
 		// initialize the usable function pointer to the regular version
 		SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
 	}
 
 public:
-	static bool SetToRegular(FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr)
-	{
-		*ptr_to_chosen_func_ptr = regular_func_ptr;
-		return true;
+
+  virtual ~BasicCodeGen() = default;
+
+	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
+
+	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) override final {
+		is_generated_ = GenerateCodeImpl(manager, code_generator);
 	}
 
 	// sets the chosen function pointer to the regular version
-	virtual bool SetToRegular()
-	{
+	virtual bool SetToRegular() override final {
 		assert(nullptr != regular_func_ptr_);
 		SetToRegular(regular_func_ptr_, ptr_to_chosen_func_ptr_);
 		return true;
 	}
 
-	FuncPtrType GetRegularFuncPointer()
-	{
-		return regular_func_ptr_;
-	}
-
 	// sets the chosen function pointer to the code gened version
-	virtual bool SetToGenerated(gpcodegen::CodeGenerator* code_generator)
-	{
+	virtual bool SetToGenerated(gpcodegen::CodeGenerator* code_generator) override final {
 		if (false == IsGenerated()) {
 			assert(*ptr_to_chosen_func_ptr_ == regular_func_ptr_);
 			return false;
@@ -130,12 +110,27 @@ public:
 	}
 
 	// prepare for a new code generation; previous one is no longer valid
-	virtual void Reset()
-	{
+	virtual void Reset() override final {
 		SetToRegular();
 	}
 
-	virtual ~BasicCodeGen() = default;
+	// returns the generated unique function name
+	virtual std::string GetFuncName() override final {
+		return func_name_;
+	}
+
+	virtual bool IsGenerated() override final {
+		return is_generated_;
+	}
+
+	FuncPtrType GetRegularFuncPointer() {
+		return regular_func_ptr_;
+	}
+
+	static bool SetToRegular(FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr) {
+		*ptr_to_chosen_func_ptr = regular_func_ptr;
+		return true;
+	}
 };
 
 

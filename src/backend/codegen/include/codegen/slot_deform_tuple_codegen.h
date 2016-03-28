@@ -16,10 +16,6 @@
 #include "codegen/codegen.h"
 #include "codegen/codegen_wrapper.h"
 
-#include "postgres.h"
-#include "access/htup.h"
-#include "access/tupmacs.h"
-#include "catalog/pg_attribute.h"
 
 namespace code_gen
 {
@@ -32,9 +28,10 @@ public:
 	virtual ~SlotDeformTupleCodeGen() = default;
 
 	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager,
-			gpcodegen::CodeGenerator* code_generator);
+			gpcodegen::CodeGenerator* code_generator) override final;
 
-	virtual const char* GetFunctionPrefix();
+	virtual const char* GetFunctionPrefix() override final;
+
 private:
 	static constexpr char kSlotDeformTupleNamePrefix[] = "slot_deform_tuple";
 	TupleTableSlot* slot_;

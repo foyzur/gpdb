@@ -59,12 +59,6 @@ void elogged_func(FuncType* func_type) {
 	return func_type();
 }
 
-//void elog_wrapper(const std::string& log_message)
-//{
-//	elog_start(__FILE__, __LINE__, PG_FUNCNAME_MACRO);
-//	elog_finish(INFO, log_message.c_str());
-//}
-
 //template <const char* func_name, typename ReturnType, typename... ArgumentTypes>
 template <typename ReturnType, typename... ArgumentTypes>
 ReturnType wrap_func(char* func_name, void* f, ArgumentTypes... arg) {
