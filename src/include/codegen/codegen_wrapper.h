@@ -18,6 +18,15 @@ struct TupleTableSlot;
 
 typedef void (*SlotDeformTupleFn) (struct TupleTableSlot *slot, int natts);
 
+/**
+ * @brief Life span of Code generator instance
+ *
+ * @note Each code generator is responsible to generate code for one specific function.
+ *       Each generated function has a life span to indicate to the manager about when to
+ *       invalidate and regenerate this function. The enroller is responsible to know
+ *       how long a generated code should be valid.
+ *
+ **/
 typedef enum CodeGenFuncLifespan
 {
 	// does not depend on parameter changes

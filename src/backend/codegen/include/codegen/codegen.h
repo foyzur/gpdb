@@ -47,9 +47,9 @@ public:
 	virtual void Reset() = 0;
 
 	// returns the generated unique function name
-	virtual std::string GetFuncName() = 0;
-	virtual const char* GetFunctionPrefix() = 0;
-	virtual bool IsGenerated() = 0;
+	virtual std::string GetFuncName() const = 0;
+	virtual const char* GetFunctionPrefix() const = 0;
+	virtual bool IsGenerated() const = 0;
 };
 
 template <class FuncPtrType>
@@ -73,10 +73,11 @@ public:
 
   virtual ~BasicCodeGen() = default;
 
-	virtual bool GenerateCodeImpl(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
+  // a template method design pattern to be overridden by the sub-class to implement the actual code generation
+	virtual bool DoCodeGeneration(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
 
 	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) override final {
-		is_generated_ = GenerateCodeImpl(manager, code_generator);
+		is_generated_ = DoCodeGeneration(manager, code_generator);
 	}
 
 	// sets the chosen function pointer to the regular version
@@ -115,11 +116,11 @@ public:
 	}
 
 	// returns the generated unique function name
-	virtual std::string GetFuncName() override final {
+	virtual std::string GetFuncName() const override final {
 		return func_name_;
 	}
 
-	virtual bool IsGenerated() override final {
+	virtual bool IsGenerated() const override final {
 		return is_generated_;
 	}
 

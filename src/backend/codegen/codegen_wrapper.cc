@@ -76,7 +76,7 @@ void* SlotDeformTupleCodeGen_Enroll(TupleTableSlot* slot, SlotDeformTupleFn regu
 	CodeGeneratorManager* manager = static_cast<CodeGeneratorManager*>(
 			GetActiveCodeGeneratorManager());
 
-	if (nullptr == manager) //|| 0 == is_codegen_initalized)
+	if (nullptr == manager)
 	{
 		BasicCodeGen<SlotDeformTupleFn>::SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
 		return nullptr;

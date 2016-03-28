@@ -53,12 +53,6 @@ SlotDeformTupleCodeGen::SlotDeformTupleCodeGen(TupleTableSlot* slot,
 
 }
 
-template <typename FuncType>
-void elogged_func(FuncType* func_type) {
-
-	return func_type();
-}
-
 //template <const char* func_name, typename ReturnType, typename... ArgumentTypes>
 template <typename ReturnType, typename... ArgumentTypes>
 ReturnType wrap_func(char* func_name, void* f, ArgumentTypes... arg) {
@@ -112,15 +106,11 @@ void MakeWrapperFunction(CodeGen *code_gen, gpcodegen::CodeGenerator* code_gener
   }
 }
 
-bool SlotDeformTupleCodeGen::GenerateCodeImpl(CodeGeneratorManager* manager,
+bool SlotDeformTupleCodeGen::DoCodeGeneration(CodeGeneratorManager* manager,
 			gpcodegen::CodeGenerator* code_generator) {
 	elog(WARNING, "GenerateCode: %p, %s", code_generator, GetFuncName().c_str());
 
 	MakeWrapperFunction(this, code_generator, GetRegularFuncPointer(), GetFuncName());
 
 	return true;
-}
-
-const char* SlotDeformTupleCodeGen::GetFunctionPrefix() {
-	return kSlotDeformTupleNamePrefix;
 }
