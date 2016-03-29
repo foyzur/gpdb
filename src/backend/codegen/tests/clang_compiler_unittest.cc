@@ -18,7 +18,8 @@
 #include <type_traits>
 
 #include "codegen/utils/clang_compiler.h"
-#include "codegen/utils/code_generator.h"
+
+#include "codegen/utils/codegen_utils.h"
 #include "codegen/utils/instance_method_wrappers.h"
 #include "gtest/gtest.h"
 #include "llvm/ADT/Twine.h"

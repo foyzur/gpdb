@@ -26,8 +26,8 @@
 #include <utility>
 #include <vector>
 
+#include "codegen/utils/codegen_utils.h"
 #include "codegen/utils/annotated_type.h"
-#include "codegen/utils/code_generator.h"
 
 #ifdef CODEGEN_HAVE_TEMPORARY_FILE
 #include "codegen/utils/temporary_file.h"

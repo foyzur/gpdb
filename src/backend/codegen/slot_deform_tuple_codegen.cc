@@ -14,7 +14,6 @@
 #include <string>
 
 #include "codegen/utils/clang_compiler.h"
-#include "codegen/utils/code_generator.h"
 #include "codegen/utils/utility.h"
 #include "codegen/utils/instance_method_wrappers.h"
 
@@ -40,6 +39,7 @@
 #include "access/tupmacs.h"
 #include "catalog/pg_attribute.h"
 #include "executor/tuptable.h"
+#include "codegen/utils/codegen_utils.h"
 
 using namespace gpcodegen;
 

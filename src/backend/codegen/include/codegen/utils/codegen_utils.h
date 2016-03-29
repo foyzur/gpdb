@@ -3,7 +3,7 @@
 //  Copyright 2016 Pivotal Software, Inc.
 //
 //  @filename:
-//    code_generator.h
+//    codegen_utils.h
 //
 //  @doc:
 //    Object that manages runtime code generation for a single LLVM module.

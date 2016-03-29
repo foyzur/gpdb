@@ -14,8 +14,6 @@
 //
 //---------------------------------------------------------------------------
 
-#include "codegen/utils/code_generator.h"
-
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -25,6 +23,7 @@
 #include <string>
 #include <utility>
 
+#include "codegen/utils/codegen_utils.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"

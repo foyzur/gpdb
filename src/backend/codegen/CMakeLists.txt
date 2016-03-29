@@ -113,7 +113,7 @@ include_directories(${CLANG_INCLUDE_DIRS})
 # Core codegen library.
 add_library(gpcodegen SHARED
             utils/clang_compiler.cc
-            utils/code_generator.cc
+            utils/codegen_utils.cc
             ${codegen_tmpfile_sources})
 if(APPLE)
   set(WL_START_GROUP "")

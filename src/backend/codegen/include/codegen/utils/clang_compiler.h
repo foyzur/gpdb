@@ -22,8 +22,8 @@
 #include <string>
 #include <type_traits>
 
-#include "codegen/utils/code_generator.h"
 #include "codegen/utils/macros.h"
+#include "codegen/utils/codegen_utils.h"
 
 namespace llvm { class Twine; }
 

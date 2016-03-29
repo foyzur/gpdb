@@ -10,7 +10,6 @@
 //
 //---------------------------------------------------------------------------
 
-#include "codegen/utils/code_generator.h"
 #include "codegen/codegen_wrapper.h"
 #include "codegen/codegen_manager.h"
 #include "codegen/slot_deform_tuple_codegen.h"
@@ -21,6 +20,7 @@
 #include "access/tupmacs.h"
 #include "catalog/pg_attribute.h"
 #include "executor/tuptable.h"
+#include "codegen/utils/codegen_utils.h"
 
 using namespace gpcodegen;
 
