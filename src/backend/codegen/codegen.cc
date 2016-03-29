@@ -11,7 +11,7 @@
 //---------------------------------------------------------------------------
 #include "codegen/codegen.h"
 
-using namespace code_gen;
+using namespace gpcodegen;
 
 long CodeGen::unique_counter_ = 0;
 

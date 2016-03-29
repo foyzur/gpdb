@@ -21,11 +21,18 @@ namespace gpcodegen {
 	class CodeGenerator;
 }
 
-namespace code_gen
+namespace gpcodegen
 {
+/** \addtogroup gpcodegen
+ *  @{
+ */
 
+// Forward declaration of class that will be managed by manager
 class CodeGen;
 
+/**
+ * @brief Object that manages all code gen.
+ **/
 class CodeGeneratorManager
 {
 private:

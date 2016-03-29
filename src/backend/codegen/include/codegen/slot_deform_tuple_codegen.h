@@ -17,7 +17,7 @@
 #include "codegen/codegen_wrapper.h"
 
 
-namespace code_gen
+namespace gpcodegen
 {
 class SlotDeformTupleCodeGen: public BasicCodeGen <SlotDeformTupleFn> {
 public:

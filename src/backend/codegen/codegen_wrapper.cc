@@ -22,7 +22,7 @@
 #include "catalog/pg_attribute.h"
 #include "executor/tuptable.h"
 
-using namespace code_gen;
+using namespace gpcodegen;
 
 // the current code generator manager that oversees all code generators
 static void* ActiveCodeGeneratorManager = nullptr;

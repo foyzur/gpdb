@@ -45,7 +45,7 @@ extern "C"
 #include "utils/elog.h"
 }
 
-using namespace code_gen;
+using namespace gpcodegen;
 
 CodeGeneratorManager::CodeGeneratorManager() {
 	code_generator_.reset(new gpcodegen::CodeGenerator("test_module"));

@@ -23,7 +23,7 @@ extern "C"
 #include "utils/elog.h"
 }
 
-namespace code_gen
+namespace gpcodegen
 {
 class CodeGeneratorManager;
 

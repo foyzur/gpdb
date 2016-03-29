@@ -41,7 +41,7 @@
 #include "catalog/pg_attribute.h"
 #include "executor/tuptable.h"
 
-using namespace code_gen;
+using namespace gpcodegen;
 
 constexpr char SlotDeformTupleCodeGen::kSlotDeformTupleNamePrefix[];
 
