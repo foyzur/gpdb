@@ -9,7 +9,7 @@
 //		Implementation of codegen interface's static function
 //
 //---------------------------------------------------------------------------
-#include "codegen/codegen.h"
+#include "codegen/codegen_interface.h"
 
 using namespace gpcodegen;
 

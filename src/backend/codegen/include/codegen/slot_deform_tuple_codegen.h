@@ -13,8 +13,8 @@
 #ifndef SLOT_DEFORM_TUPLE_CODEGEN_H_
 #define SLOT_DEFORM_TUPLE_CODEGEN_H_
 
-#include "codegen/codegen.h"
 #include "codegen/codegen_wrapper.h"
+#include "codegen/base_codegen.h"
 
 
 namespace gpcodegen

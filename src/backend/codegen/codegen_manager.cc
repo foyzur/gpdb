@@ -16,10 +16,10 @@
 #include "codegen/utils/clang_compiler.h"
 #include "codegen/utils/utility.h"
 #include "codegen/utils/instance_method_wrappers.h"
+#include "codegen/utils/codegen_utils.h"
+#include "codegen/codegen_interface.h"
 
 #include "codegen/codegen_manager.h"
-#include "codegen/codegen.h"
-
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/Argument.h"
@@ -39,7 +39,6 @@
 //#include "access/tupmacs.h"
 //#include "c.h"
 #include "catalog/pg_attribute.h"
-#include "codegen/utils/codegen_utils.h"
 extern "C"
 {
 #include "utils/elog.h"

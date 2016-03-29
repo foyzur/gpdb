@@ -3,10 +3,10 @@
 //	Copyright (C) 2016 Pivotal Software, Inc.
 //
 //	@filename:
-//		codegen.h
+//		base_codegen.h
 //
 //	@doc:
-//		Base class for all the code generators
+//		Base class for all the code generators with common implementation
 //
 //---------------------------------------------------------------------------
 #ifndef BASE_CODEGEN_H_
@@ -15,7 +15,8 @@
 #include <string>
 #include <vector>
 
-#include "utils/codegen_utils.h"
+#include "codegen/utils/codegen_utils.h"
+#include "codegen/codegen_interface.h"
 
 
 extern "C"
@@ -26,31 +27,6 @@ extern "C"
 namespace gpcodegen
 {
 class CodeGeneratorManager;
-
-class CodeGenInterface
-{
-private:
-	static long unique_counter_;
-
-protected:
-	static std::string GenerateUniqueName(const std::string& prefix);
-
-public:
-	virtual ~CodeGenInterface() = default;
-
-	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
-	// sets the chosen function pointer to the regular version
-	virtual bool SetToRegular() = 0;
-	// sets the chosen function pointer to the code gened version
-	virtual bool SetToGenerated(gpcodegen::CodeGenUtils* codegen_utils) = 0;
-	// prepare for a new code generation; previous one is no longer valid
-	virtual void Reset() = 0;
-
-	// returns the generated unique function name
-	virtual std::string GetFuncName() const = 0;
-	virtual const char* GetFunctionPrefix() const = 0;
-	virtual bool IsGenerated() const = 0;
-};
 
 template <class FuncPtrType>
 class BaseCodeGen: public CodeGenInterface
