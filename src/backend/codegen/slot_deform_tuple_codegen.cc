@@ -54,52 +54,53 @@ SlotDeformTupleCodeGen::SlotDeformTupleCodeGen(TupleTableSlot* slot,
 }
 
 //template <const char* func_name, typename ReturnType, typename... ArgumentTypes>
-template <typename ReturnType, typename... ArgumentTypes>
-ReturnType wrap_func(char* func_name, void* f, ArgumentTypes... arg) {
+static void ElogWrapper(const char* func_name) {
 	elog(INFO, "Calling wrapped function: %s", func_name);
-	reinterpret_cast<ReturnType (*)(ArgumentTypes...)>(f)(arg ...);
 }
 
-template <typename ReturnType, typename... ArgumentTypes>
-void MakeWrapperFunction(CodeGen *code_gen, gpcodegen::CodeGenerator* code_generator,
-    ReturnType (*external_function)(ArgumentTypes...),
-    const std::string& wrapper_function_name) {
+
+void SlotDeformTupleCodeGen::MakeWrapperFunction(gpcodegen::CodeGenerator* code_generator) {
   // Register 'external_function' in 'code_generator_' and check that it has
   // the expected type-signature.
 
-  llvm::Function* llvm_external_function
-      = code_generator->RegisterExternalFunction(&wrap_func<ReturnType, ArgumentTypes...>);
-  assert(llvm_external_function != nullptr);
+  llvm::Function* llvm_elog_wrapper
+      = code_generator->RegisterExternalFunction(ElogWrapper);
+  assert(llvm_elog_wrapper != nullptr);
+
+  auto regular_func_pointer = GetRegularFuncPointer();
+  llvm::Function* llvm_regular_function
+      = code_generator->RegisterExternalFunction(regular_func_pointer);
+  assert(llvm_regular_function != nullptr);
+
+
   //wrap_func<void, const std::string&>(elog_wrapper, "test");
   // Create a wrapper function in 'code_generator_' with the same
   // type-signature that merely forwards its arguments to the external
   // function as-is.
-  llvm::Function* wrapper_function
-      = code_generator->CreateFunction<ReturnType, ArgumentTypes...>(
-          wrapper_function_name);
+  llvm::Function* llvm_function
+      = code_generator->CreateFunctionTypeDef<decltype(regular_func_pointer)>(GetFuncName());
 
-  llvm::BasicBlock* wrapper_function_body
-      = code_generator->CreateBasicBlock("wrapper_fn_body",
-                                          wrapper_function);
+  llvm::BasicBlock* function_body
+      = code_generator->CreateBasicBlock("fn_body",
+    		  llvm_function);
 
-  code_generator->ir_builder()->SetInsertPoint(wrapper_function_body);
+  code_generator->ir_builder()->SetInsertPoint(function_body);
+  llvm::Value* func_name_llvm = code_generator->GetConstant(this->GetFunctionPrefix());
+  code_generator->ir_builder()->CreateCall(
+        llvm_elog_wrapper, {func_name_llvm});
+
   std::vector<llvm::Value*> forwarded_args;
 
-  llvm::Value* func_name_llvm = code_generator->GetConstant(code_gen->GetFunctionPrefix());
-
-  forwarded_args.push_back(func_name_llvm);
-  // push the function to call inside wrapper
-  forwarded_args.push_back(code_generator->GetConstant(reinterpret_cast<void*>(external_function)));
-
-  for (llvm::Argument& arg : wrapper_function->args()) {
+  for (llvm::Argument& arg : llvm_function->args()) {
     forwarded_args.push_back(&arg);
   }
+
   llvm::CallInst* call = code_generator->ir_builder()->CreateCall(
-      llvm_external_function,
+	  llvm_regular_function,
       forwarded_args);
 
   // Return the result of the call, or void if the function returns void.
-  if (std::is_same<ReturnType, void>::value) {
+  if (std::is_same<gpcodegen::code_generator_detail::FunctionTypeUnpacker<decltype(regular_func_pointer)>::R, void>::value) {
     code_generator->ir_builder()->CreateRetVoid();
   } else {
     code_generator->ir_builder()->CreateRet(call);
@@ -110,7 +111,7 @@ bool SlotDeformTupleCodeGen::DoCodeGeneration(CodeGeneratorManager* manager,
 			gpcodegen::CodeGenerator* code_generator) {
 	elog(WARNING, "GenerateCode: %p, %s", code_generator, GetFuncName().c_str());
 
-	MakeWrapperFunction(this, code_generator, GetRegularFuncPointer(), GetFuncName());
+	MakeWrapperFunction(code_generator);
 
 	return true;
 }

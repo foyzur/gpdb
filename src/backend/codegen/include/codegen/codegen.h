@@ -71,7 +71,9 @@ protected:
 
 public:
 
-  virtual ~BasicCodeGen() = default;
+  virtual ~BasicCodeGen() {
+	  SetToRegular(regular_func_ptr_, ptr_to_chosen_func_ptr_);
+  }
 
   // a template method design pattern to be overridden by the sub-class to implement the actual code generation
 	virtual bool DoCodeGeneration(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
@@ -80,7 +82,7 @@ public:
 		is_generated_ = DoCodeGeneration(manager, code_generator);
 	}
 
-	// sets the chosen function pointer to the regular version
+	// Sets the chosen function pointer to the regular version.
 	virtual bool SetToRegular() override final {
 		assert(nullptr != regular_func_ptr_);
 		SetToRegular(regular_func_ptr_, ptr_to_chosen_func_ptr_);

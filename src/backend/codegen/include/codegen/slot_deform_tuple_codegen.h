@@ -35,6 +35,8 @@ public:
 	}
 
 private:
+	void MakeWrapperFunction(gpcodegen::CodeGenerator* code_generator);
+
 	static constexpr char kSlotDeformTupleNamePrefix[] = "slot_deform_tuple";
 	TupleTableSlot* slot_;
 };

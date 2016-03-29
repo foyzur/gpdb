@@ -1003,6 +1003,7 @@ template<typename ReturnType, typename... ArgumentTypes>
 class FunctionTypeUnpacker<ReturnType(*)(ArgumentTypes...)>
 {
 public:
+  using R = ReturnType;
   static auto GetFunctionPointerHelper(gpcodegen::CodeGenerator* code_generator, const std::string& func_name)
     -> ReturnType (*)(ArgumentTypes...) {
     return code_generator->GetFunctionPointer<ReturnType, ArgumentTypes...>(func_name);
