@@ -28,14 +28,14 @@ public:
 	virtual ~SlotDeformTupleCodeGen() = default;
 
 	virtual bool DoCodeGeneration(CodeGeneratorManager* manager,
-			gpcodegen::CodeGenerator* code_generator) override final;
+			gpcodegen::CodeGenUtils* codegen_utils) override final;
 
 	virtual const char* GetFunctionPrefix() const override final {
 	  return kSlotDeformTupleNamePrefix;
 	}
 
 private:
-	void MakeWrapperFunction(gpcodegen::CodeGenerator* code_generator);
+	void MakeWrapperFunction(gpcodegen::CodeGenUtils* codegen_utils);
 
 	static constexpr char kSlotDeformTupleNamePrefix[] = "slot_deform_tuple";
 	TupleTableSlot* slot_;

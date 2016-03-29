@@ -3,10 +3,10 @@
 //	Copyright (C) 2016 Pivotal Software, Inc.
 //
 //	@filename:
-//		code_generator.cpp
+//		codegen.cc
 //
 //	@doc:
-//		Contains different code generators
+//		Implementation of codegen interface's static function
 //
 //---------------------------------------------------------------------------
 #include "codegen/codegen.h"

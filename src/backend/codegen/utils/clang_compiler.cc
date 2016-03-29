@@ -255,7 +255,7 @@ std::string ClangCompiler::CppTypeFromAnnotatedType(
 
 std::string ClangCompiler::GenerateExternalFunctionDeclarations() const {
   std::string declarations;
-  for (const CodeGenerator::NamedExternalFunction& external_fn
+  for (const CodeGenUtils::NamedExternalFunction& external_fn
        : code_generator_->named_external_functions_) {
     // Mark extern "C" to avoid name-mangling.
     declarations.append("extern \"C\" ");

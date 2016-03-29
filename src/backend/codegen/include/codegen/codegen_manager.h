@@ -18,7 +18,7 @@
 #include "codegen/codegen_wrapper.h"
 
 namespace gpcodegen {
-	class CodeGenerator;
+	class CodeGenUtils;
 }
 
 namespace gpcodegen
@@ -36,8 +36,8 @@ class CodeGen;
 class CodeGeneratorManager
 {
 private:
-	// CodeGenerator provides a facade to LLVM subsystem
-	std::unique_ptr<gpcodegen::CodeGenerator> code_generator_;
+	// CodeGenUtils provides a facade to LLVM subsystem
+	std::unique_ptr<gpcodegen::CodeGenUtils> code_generator_;
 
 	// list of all enrolled code generators
 	std::vector<std::unique_ptr<CodeGen>> enrolled_code_generators_;

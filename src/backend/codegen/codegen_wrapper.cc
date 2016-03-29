@@ -31,7 +31,7 @@ static bool is_codegen_initalized = false;
 // Perform global set-up tasks for code generation. Returns 0 on
 // success, nonzero on error.
 int InitCodeGen() {
-	is_codegen_initalized = gpcodegen::CodeGenerator::InitializeGlobal();
+	is_codegen_initalized = gpcodegen::CodeGenUtils::InitializeGlobal();
 	return !is_codegen_initalized;
 }
 

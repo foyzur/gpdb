@@ -48,7 +48,7 @@ extern "C"
 using namespace gpcodegen;
 
 CodeGeneratorManager::CodeGeneratorManager() {
-	code_generator_.reset(new gpcodegen::CodeGenerator("test_module"));
+	code_generator_.reset(new gpcodegen::CodeGenUtils("test_module"));
 }
 
 bool CodeGeneratorManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGen* generator) {
@@ -69,7 +69,7 @@ bool CodeGeneratorManager::GenerateCode() {
 
 bool CodeGeneratorManager::PrepareGeneratedFunctions() {
 	elog(WARNING, "Compiling everything: %p", code_generator_.get());
-	bool compilation_status = code_generator_->PrepareForExecution(gpcodegen::CodeGenerator::OptimizationLevel::kNone, true);
+	bool compilation_status = code_generator_->PrepareForExecution(gpcodegen::CodeGenUtils::OptimizationLevel::kNone, true);
 
 	if (!compilation_status)
 	{
@@ -77,7 +77,7 @@ bool CodeGeneratorManager::PrepareGeneratedFunctions() {
 		return compilation_status;
 	}
 
-	gpcodegen::CodeGenerator* llvm_helper = code_generator_.get();
+	gpcodegen::CodeGenUtils* llvm_helper = code_generator_.get();
 	for(auto& generator : enrolled_code_generators_) {
 		generator->SetToGenerated(llvm_helper);
 	}

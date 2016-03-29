@@ -6,7 +6,7 @@
 //    code_generator_unittest.cc
 //
 //  @doc:
-//    Unit tests for utils/code_generator.cc
+//    Unit tests for utils/codegen_utils.cc
 //
 //  @test:
 //
@@ -95,7 +95,7 @@ struct DummyStruct {
 };
 
 // A dummy struct with several char fields that map to LLVM's i8 type. Used to
-// check that CodeGenerator::GetPointerToMember() works correctly when the type
+// check that CodeGenUtils::GetPointerToMember() works correctly when the type
 // of a pointer to the field to be accessed is the same as the type used for
 // underlying pointer arithmetic.
 struct DummyStructWithCharFields {
@@ -241,18 +241,18 @@ struct ExpectLongLong<EnumT,
 class CodeGeneratorTestEnvironment : public ::testing::Environment {
  public:
   virtual void SetUp() {
-    ASSERT_TRUE(CodeGenerator::InitializeGlobal());
+    ASSERT_TRUE(CodeGenUtils::InitializeGlobal());
   }
 };
 
 class CodeGeneratorTest : public ::testing::Test {
  protected:
   virtual void SetUp() {
-    code_generator_.reset(new CodeGenerator("test_module"));
+    code_generator_.reset(new CodeGenUtils("test_module"));
   }
 
-  // Helper method for GetScalarTypeTest. Tests CodeGenerator::GetType() and
-  // CodeGenerator::GetAnnotatedType() for an 'IntegerType' and its
+  // Helper method for GetScalarTypeTest. Tests CodeGenUtils::GetType() and
+  // CodeGenUtils::GetAnnotatedType() for an 'IntegerType' and its
   // const-qualified version.
   template <typename IntegerType>
   void CheckGetIntegerType() {
@@ -294,7 +294,7 @@ class CodeGeneratorTest : public ::testing::Test {
     EXPECT_FALSE(annotated_type.is_volatile.front());
   }
 
-  // Helper method for GetScalarTypeTest. Tests CodeGenerator::GetType() for an
+  // Helper method for GetScalarTypeTest. Tests CodeGenUtils::GetType() for an
   // 'EnumType' that is expected to map to 'EquivalentIntegerType'.
   template <typename EnumType, typename EquivalentIntegerType>
   void CheckGetEnumType() {
@@ -345,11 +345,11 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetPointerTypeTest. Checks that the annotations produced
-  // by CodeGenerator::GetAnnotatedType() are as expected for a given
+  // by CodeGenUtils::GetAnnotatedType() are as expected for a given
   // 'PointerType' (which may also be a reference).
   //
   // NOTE(chasseur): This works with up to 2 levels of indirection (e.g. pointer
-  // to pointer) which is as far as we test. CodeGenerator::GetAnnotatedType()
+  // to pointer) which is as far as we test. CodeGenUtils::GetAnnotatedType()
   // should work for arbitrarily deep chains of pointers, but this check method
   // only looks at most 2 pointers deep.
   template <typename PointerType>
@@ -465,8 +465,8 @@ class CodeGeneratorTest : public ::testing::Test {
     }
   }
 
-  // Helper method for GetPointerTypeTest. Calls CodeGenerator::GetType() and
-  // CodeGenerator::GetAnnotatedType() for 4 versions of a pointer to
+  // Helper method for GetPointerTypeTest. Calls CodeGenUtils::GetType() and
+  // CodeGenUtils::GetAnnotatedType() for 4 versions of a pointer to
   // 'PointedType' with various const-qualifiers (regular mutable pointer,
   // pointer to const, const-pointer, and const-pointer to const) and invokes
   // 'check_functor' on the returned llvm::Type*. check_functor's call operator
@@ -564,7 +564,7 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetScalarConstantTest. Tests
-  // CodeGenerator::GetConstant() for a single 'integer_constant'.
+  // CodeGenUtils::GetConstant() for a single 'integer_constant'.
   template <typename IntegerType>
   void CheckGetSingleIntegerConstant(const IntegerType integer_constant) {
     llvm::Constant* constant = code_generator_->GetConstant(integer_constant);
@@ -588,7 +588,7 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetScalarConstantTest. Tests
-  // CodeGenerator::GetConstant() for an 'IntegerType' with several values
+  // CodeGenUtils::GetConstant() for an 'IntegerType' with several values
   // of the specified integer type (0, 1, 123, the maximum, and if signed,
   // -1, -123, and the minimum).
   template <typename IntegerType>
@@ -607,7 +607,7 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetScalarConstantTest. Tests
-  // CodeGenerator::GetConstant() for a single 'fp_constant'.
+  // CodeGenUtils::GetConstant() for a single 'fp_constant'.
   template <typename FloatingPointType>
   void CheckGetSingleFloatingPointConstant(
       const FloatingPointType fp_constant) {
@@ -635,7 +635,7 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetScalarConstantTest. Tests
-  // CodeGenerator::GetConstant() for a 'FloatingPointType' with several values
+  // CodeGenUtils::GetConstant() for a 'FloatingPointType' with several values
   // of the specified floating point type (positive and negative zero, positive
   // and negative 12.34, the minimum and maximum possible normalized values,
   // the highest-magnitude negative value, the smallest possible nonzero
@@ -659,7 +659,7 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetScalarConstantTest. Tests
-  // CodeGenerator::GetConstant() for a single 'enum_constant'.
+  // CodeGenUtils::GetConstant() for a single 'enum_constant'.
   template <typename EnumType>
   void CheckGetSingleEnumConstant(const EnumType enum_constant) {
     llvm::Constant* constant = code_generator_->GetConstant(enum_constant);
@@ -689,7 +689,7 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetScalarConstantTest. Tests
-  // CodeGenerator::GetConstant() for an 'EnumType' by calling
+  // CodeGenUtils::GetConstant() for an 'EnumType' by calling
   // CheckGetSingleEnumConstant() for each constant listed in 'enum_constants'.
   template <typename EnumType>
   void CheckGetEnumConstants(std::initializer_list<EnumType> enum_constants) {
@@ -728,11 +728,11 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetPointerConstantTest. Tests
-  // CodeGenerator::GetConstant() for 'ptr_constant'. Verifies that the
+  // CodeGenUtils::GetConstant() for 'ptr_constant'. Verifies that the
   // pointer Constant returned is the expected type and generates an accessor
   // function that returns the address of the pointer constant, recording the
   // expected address in '*pointer_check_addresses'. After all of the
-  // invocations of this method in a test, CodeGenerator::PrepareForExecution()
+  // invocations of this method in a test, CodeGenUtils::PrepareForExecution()
   // should be called to compile the accessor functions, then
   // FinishCheckingGlobalConstantPointers() should be called to make sure that
   // the accessor functions return the expected addresses.
@@ -750,7 +750,7 @@ class CodeGeneratorTest : public ::testing::Test {
       EXPECT_TRUE(constant->isNullValue());
     } else {
       // Expect a GlobalVariable. This will be mapped to the actual external
-      // address when CodeGenerator::PrepareForExecution() is called. For now,
+      // address when CodeGenUtils::PrepareForExecution() is called. For now,
       // we generate a function that returns the (constant) address of the
       // GlobalVariable. Later on, we will compile all such functions and check
       // that they return the expected addresses.
@@ -776,7 +776,7 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetPointerConstantTest. Tests
-  // CodeGenerator::GetConstant() by calling CheckGetSinglePointerConstant()
+  // CodeGenUtils::GetConstant() by calling CheckGetSinglePointerConstant()
   // for a 'ScalarType*' pointer pointing to NULL, to stack memory, and to heap
   // memory, and for a 'ScalarType**' pointer pointing to NULL, to stack
   // memory, and to heap memory.
@@ -857,12 +857,12 @@ class CodeGeneratorTest : public ::testing::Test {
   }
 
   // Helper method for GetPointerToMemberConstantTest. Verifies that
-  // CodeGenerator::GetPointerToMember() functions correctly for
+  // CodeGenUtils::GetPointerToMember() functions correctly for
   // 'pointers_to_members' by checking the type of the pointer generated when
   // accessing a member from a constant pointer to StructType and generating an
   // accessor function the returns the address of the member, recording the
   // expected address in '*pointer_check_addresses'. After all of the
-  // invocations of this method in a test, CodeGenerator::PrepareForExecution()
+  // invocations of this method in a test, CodeGenUtils::PrepareForExecution()
   // should be called to compile the accessor functions, then
   // FinishCheckingGlobalConstantPointers() should be called to make sure that
   // the accessor functions return the expected addresses.
@@ -1016,7 +1016,7 @@ class CodeGeneratorTest : public ::testing::Test {
 
     // Prepare for execution.
     EXPECT_TRUE(code_generator_->PrepareForExecution(
-        CodeGenerator::OptimizationLevel::kNone, true));
+        CodeGenUtils::OptimizationLevel::kNone, true));
 
     void (*project_scalar_function_compiled)(InputType*, InputType*)
          = code_generator_->GetFunctionPointer<void, InputType*, InputType*>(
@@ -1035,7 +1035,7 @@ class CodeGeneratorTest : public ::testing::Test {
     delete[] output_array;
   }
 
-  std::unique_ptr<CodeGenerator> code_generator_;
+  std::unique_ptr<CodeGenUtils> code_generator_;
 };
 
 typedef CodeGeneratorTest CodeGeneratorDeathTest;
@@ -1625,7 +1625,7 @@ TEST_F(CodeGeneratorTest, GetPointerConstantTest) {
   // the addresses of global variables are as expected.
   EXPECT_FALSE(llvm::verifyModule(*code_generator_->module()));
   ASSERT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
   FinishCheckingGlobalConstantPointers(pointer_check_addresses);
 }
@@ -1706,7 +1706,7 @@ TEST_F(CodeGeneratorTest, TrivialCompilationTest) {
 
   // Prepare generated code for execution.
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
   EXPECT_EQ(nullptr, code_generator_->module());
 
@@ -1739,7 +1739,7 @@ TEST_F(CodeGeneratorTest, ExternalFunctionTest) {
   // functions for execution.
   EXPECT_FALSE(llvm::verifyModule(*code_generator_->module()));
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
 
   // Try calling std::fabs() through the generated wrapper.
@@ -1826,7 +1826,7 @@ TEST_F(CodeGeneratorTest, RecursionTest) {
 
   // Prepare for execution.
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
   unsigned (*factorial_recursive_compiled)(unsigned)
       = code_generator_->GetFunctionPointer<unsigned, unsigned>(
@@ -1914,7 +1914,7 @@ TEST_F(CodeGeneratorTest, SwitchTest) {
 
   // Prepare for execution.
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
 
   int (*switch_function_compiled)(char)  // NOLINT(readability/casting)
@@ -2025,7 +2025,7 @@ TEST_F(CodeGeneratorTest, IterationTest) {
 
   // Prepare for execution.
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
   unsigned (*factorial_iterative_compiled)(unsigned)
       = code_generator_->GetFunctionPointer<unsigned, unsigned>(
@@ -2070,7 +2070,7 @@ TEST_F(CodeGeneratorTest, IterationTest) {
       &std::remove_reference<decltype((struct_ptr)->top_element_name)>::type   \
           ::nested_element_name)
 
-// Test for CodeGenerator::GetPointerToMember() with constant pointers to
+// Test for CodeGenUtils::GetPointerToMember() with constant pointers to
 // external structs.
 TEST_F(CodeGeneratorTest, GetPointerToMemberConstantTest) {
   // Remember the addresses of pointer constants, in order, that we expect check
@@ -2098,7 +2098,7 @@ TEST_F(CodeGeneratorTest, GetPointerToMemberConstantTest) {
                                                heap_struct.get(),
                                                0);
 
-  // A NULL pointer also works, since CodeGenerator::GetPointerToMember() only
+  // A NULL pointer also works, since CodeGenUtils::GetPointerToMember() only
   // does address computation and doesn't dereference anything.
   GPCODEGEN_TEST_GET_POINTER_TO_STRUCT_ELEMENT(
       static_cast<DummyStruct*>(nullptr),
@@ -2175,7 +2175,7 @@ TEST_F(CodeGeneratorTest, GetPointerToMemberConstantTest) {
   // expected addresses of member fields.
   EXPECT_FALSE(llvm::verifyModule(*code_generator_->module()));
   ASSERT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
   FinishCheckingGlobalConstantPointers(pointer_check_addresses);
 }
@@ -2199,7 +2199,7 @@ TEST_F(CodeGeneratorTest, GetPointerToMemberTest) {
   // Check that module is well-formed, then compile.
   EXPECT_FALSE(llvm::verifyModule(*code_generator_->module()));
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
 
   int (*Get_DummyStruct_int_field)(const DummyStruct*)
@@ -2267,8 +2267,8 @@ TEST_F(CodeGeneratorTest, OptimizationTest) {
   EXPECT_FALSE(add3_func->doesNotAccessMemory());
 
   // Apply basic optimizations.
-  EXPECT_TRUE(code_generator_->Optimize(CodeGenerator::OptimizationLevel::kLess,
-                                        CodeGenerator::SizeLevel::kNormal,
+  EXPECT_TRUE(code_generator_->Optimize(CodeGenUtils::OptimizationLevel::kLess,
+                                        CodeGenUtils::SizeLevel::kNormal,
                                         false));
 
   // Analysis passes should have marked both functions "readnone" since they do
@@ -2284,7 +2284,7 @@ TEST_F(CodeGeneratorTest, OptimizationTest) {
 
   // Now, actually compile machine code from the optimized IR and call it.
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kLess,
+      CodeGenUtils::OptimizationLevel::kLess,
       false));
   int (*add3_compiled)(int, int, int)
       = code_generator_->GetFunctionPointer<int, int, int, int>("add3");
@@ -2351,7 +2351,7 @@ TEST_F(CodeGeneratorTest, CppClassObjectTest) {
   EXPECT_FALSE(llvm::verifyFunction(*accumulate_test_fn));
   EXPECT_FALSE(llvm::verifyModule(*code_generator_->module()));
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
 
   double (*accumulate_test_fn_compiled)(double)  // NOLINT(readability/casting)
@@ -2378,7 +2378,7 @@ TEST_F(CodeGeneratorDeathTest, WrongFunctionTypeTest) {
   code_generator_->ir_builder()->CreateRet(
       code_generator_->GetConstant<int>(42));
   EXPECT_TRUE(code_generator_->PrepareForExecution(
-      CodeGenerator::OptimizationLevel::kNone,
+      CodeGenUtils::OptimizationLevel::kNone,
       true));
 
   EXPECT_DEATH(code_generator_->GetFunctionPointer<float>("simple_fn"), "");

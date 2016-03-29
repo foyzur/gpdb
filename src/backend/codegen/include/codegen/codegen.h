@@ -38,11 +38,11 @@ protected:
 public:
 	virtual ~CodeGen() = default;
 
-	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
+	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
 	// sets the chosen function pointer to the regular version
 	virtual bool SetToRegular() = 0;
 	// sets the chosen function pointer to the code gened version
-	virtual bool SetToGenerated(gpcodegen::CodeGenerator* code_generator) = 0;
+	virtual bool SetToGenerated(gpcodegen::CodeGenUtils* codegen_utils) = 0;
 	// prepare for a new code generation; previous one is no longer valid
 	virtual void Reset() = 0;
 
@@ -76,10 +76,10 @@ public:
   }
 
   // a template method design pattern to be overridden by the sub-class to implement the actual code generation
-	virtual bool DoCodeGeneration(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) = 0;
+	virtual bool DoCodeGeneration(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
 
-	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenerator* code_generator) override final {
-		is_generated_ = DoCodeGeneration(manager, code_generator);
+	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) override final {
+		is_generated_ = DoCodeGeneration(manager, codegen_utils);
 	}
 
 	// Sets the chosen function pointer to the regular version.
@@ -90,17 +90,17 @@ public:
 	}
 
 	// sets the chosen function pointer to the code gened version
-	virtual bool SetToGenerated(gpcodegen::CodeGenerator* code_generator) override final {
+	virtual bool SetToGenerated(gpcodegen::CodeGenUtils* codegen_utils) override final {
 		if (false == IsGenerated()) {
 			assert(*ptr_to_chosen_func_ptr_ == regular_func_ptr_);
 			return false;
 		}
 
-		elog(WARNING, "SetToGenerated: %p, %s", code_generator, GetFuncName().c_str());
-		auto compiled_func_ptr = code_generator->GetFunctionPointerTypeDef<FuncPtrType>(GetFuncName());
+		elog(WARNING, "SetToGenerated: %p, %s", codegen_utils, GetFuncName().c_str());
+		auto compiled_func_ptr = codegen_utils->GetFunctionPointerTypeDef<FuncPtrType>(GetFuncName());
 
 		elog(WARNING, "compiled_func_ptr: %p", compiled_func_ptr);
-		//auto compiled_func_ptr = code_generator->GetFunctionPointer<traits::return_type, traits::arg_type>(func_name_);
+		//auto compiled_func_ptr = codegen_utils->GetFunctionPointer<traits::return_type, traits::arg_type>(func_name_);
 		//assert(nullptr != compiled_func_ptr);
 
 		if (nullptr != compiled_func_ptr)
