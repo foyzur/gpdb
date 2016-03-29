@@ -51,7 +51,7 @@ CodeGeneratorManager::CodeGeneratorManager() {
 	code_generator_.reset(new gpcodegen::CodeGenUtils("test_module"));
 }
 
-bool CodeGeneratorManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGen* generator) {
+bool CodeGeneratorManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGenInterface* generator) {
 
 	assert(funcLifespan == CodeGenFuncLifespan_Parameter_Invariant);
 	assert(nullptr != generator);

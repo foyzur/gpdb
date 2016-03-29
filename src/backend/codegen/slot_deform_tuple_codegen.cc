@@ -47,7 +47,7 @@ constexpr char SlotDeformTupleCodeGen::kSlotDeformTupleNamePrefix[];
 
 SlotDeformTupleCodeGen::SlotDeformTupleCodeGen(TupleTableSlot* slot,
 			SlotDeformTupleFn regular_func_ptr, SlotDeformTupleFn* ptr_to_regular_func_ptr):
-		BasicCodeGen(kSlotDeformTupleNamePrefix, regular_func_ptr, ptr_to_regular_func_ptr),
+		BaseCodeGen(kSlotDeformTupleNamePrefix, regular_func_ptr, ptr_to_regular_func_ptr),
 		slot_(slot)
 {
 

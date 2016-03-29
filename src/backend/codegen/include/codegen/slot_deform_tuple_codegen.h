@@ -19,7 +19,7 @@
 
 namespace gpcodegen
 {
-class SlotDeformTupleCodeGen: public BasicCodeGen <SlotDeformTupleFn> {
+class SlotDeformTupleCodeGen: public BaseCodeGen <SlotDeformTupleFn> {
 public:
 	explicit SlotDeformTupleCodeGen(TupleTableSlot* slot,
 			SlotDeformTupleFn regular_func_ptr,

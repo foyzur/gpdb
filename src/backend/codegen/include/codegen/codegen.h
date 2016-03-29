@@ -27,7 +27,7 @@ namespace gpcodegen
 {
 class CodeGeneratorManager;
 
-class CodeGen
+class CodeGenInterface
 {
 private:
 	static long unique_counter_;
@@ -36,7 +36,7 @@ protected:
 	static std::string GenerateUniqueName(const std::string& prefix);
 
 public:
-	virtual ~CodeGen() = default;
+	virtual ~CodeGenInterface() = default;
 
 	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
 	// sets the chosen function pointer to the regular version
@@ -53,7 +53,7 @@ public:
 };
 
 template <class FuncPtrType>
-class BasicCodeGen: public CodeGen
+class BaseCodeGen: public CodeGenInterface
 {
 private:
 	std::string func_name_;
@@ -62,8 +62,8 @@ private:
 	bool is_generated_;
 
 protected:
-	explicit BasicCodeGen(const std::string& prefix, FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr):
-		func_name_(CodeGen::GenerateUniqueName(prefix)), regular_func_ptr_(regular_func_ptr),
+	explicit BaseCodeGen(const std::string& prefix, FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr):
+		func_name_(CodeGenInterface::GenerateUniqueName(prefix)), regular_func_ptr_(regular_func_ptr),
 		ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr), is_generated_(false) {
 		// initialize the usable function pointer to the regular version
 		SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
@@ -71,7 +71,7 @@ protected:
 
 public:
 
-  virtual ~BasicCodeGen() {
+  virtual ~BaseCodeGen() {
 	  SetToRegular(regular_func_ptr_, ptr_to_chosen_func_ptr_);
   }
 

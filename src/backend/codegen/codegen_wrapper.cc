@@ -78,7 +78,7 @@ void* SlotDeformTupleCodeGen_Enroll(TupleTableSlot* slot, SlotDeformTupleFn regu
 
 	if (nullptr == manager)
 	{
-		BasicCodeGen<SlotDeformTupleFn>::SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
+		BaseCodeGen<SlotDeformTupleFn>::SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
 		return nullptr;
 	}
 

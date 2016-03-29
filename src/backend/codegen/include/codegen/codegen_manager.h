@@ -27,8 +27,8 @@ namespace gpcodegen
  *  @{
  */
 
-// Forward declaration of class that will be managed by manager
-class CodeGen;
+// Forward declaration of an CodeGenInterface that will be managed by manager
+class CodeGenInterface;
 
 /**
  * @brief Object that manages all code gen.
@@ -40,7 +40,7 @@ private:
 	std::unique_ptr<gpcodegen::CodeGenUtils> code_generator_;
 
 	// list of all enrolled code generators
-	std::vector<std::unique_ptr<CodeGen>> enrolled_code_generators_;
+	std::vector<std::unique_ptr<CodeGenInterface>> enrolled_code_generators_;
 
 public:
 	// Constructor
@@ -48,7 +48,7 @@ public:
 	~CodeGeneratorManager() = default;
 
 	// Enroll a new code generator
-	bool EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGen* generator);
+	bool EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGenInterface* generator);
 
 	// Ask all the generators to generate code
 	bool GenerateCode();
