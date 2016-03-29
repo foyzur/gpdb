@@ -1019,14 +1019,14 @@ public:
 
 template <typename FunctionType>
 FunctionType CodeGenerator::GetFunctionPointerTypeDef(const std::string& function_name) {
-  reinterpret_cast<FunctionType>(code_generator_detail::FunctionTypeUnpacker<FunctionType>::GetFunctionPointerHelper(this, function_name));
+  return code_generator_detail::FunctionTypeUnpacker<FunctionType>::GetFunctionPointerHelper(this, function_name);
 }
 
 template <typename FunctionType>
 llvm::Function* CodeGenerator::CreateFunctionTypeDef(
     const llvm::Twine& name,
     const llvm::GlobalValue::LinkageTypes linkage) {
-  code_generator_detail::FunctionTypeUnpacker<FunctionType>::CreateFunctionHelper(this, name, linkage);
+  return code_generator_detail::FunctionTypeUnpacker<FunctionType>::CreateFunctionHelper(this, name, linkage);
 }
 
 }  // namespace gpcodegen
