@@ -166,7 +166,7 @@ add_custom_target(unittest-check ${CMAKE_CTEST_COMMAND})
 
 SET(TEST_SOURCES
     tests/clang_compiler_unittest.cc
-    tests/code_generator_unittest.cc
+    tests/codegen_utils_unittest.cc
     tests/instance_method_wrappers_unittest.cc)
 
 # Googletest framework for tests.
