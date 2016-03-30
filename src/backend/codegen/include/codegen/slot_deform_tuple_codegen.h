@@ -19,6 +19,11 @@
 
 namespace gpcodegen
 {
+
+/** \addtogroup gpcodegen
+ *  @{
+ */
+
 class SlotDeformTupleCodeGen: public BaseCodeGen <SlotDeformTupleFn> {
 public:
 	explicit SlotDeformTupleCodeGen(TupleTableSlot* slot,
@@ -27,18 +32,22 @@ public:
 
 	virtual ~SlotDeformTupleCodeGen() = default;
 
-	virtual bool DoCodeGeneration(gpcodegen::CodeGenUtils* codegen_utils) override final;
-
 	virtual const char* GetOrigFuncName() const override final {
 	  return kSlotDeformTupleNamePrefix;
 	}
 
-private:
-	void MakeWrapperFunction(gpcodegen::CodeGenUtils* codegen_utils);
+protected:
+	virtual bool DoCodeGeneration(gpcodegen::CodeGenUtils* codegen_utils) override final;
 
-	static constexpr char kSlotDeformTupleNamePrefix[] = "slot_deform_tuple";
+private:
 	TupleTableSlot* slot_;
+
+  static constexpr char kSlotDeformTupleNamePrefix[] = "slot_deform_tuple";
+
+	void MakeWrapperFunction(gpcodegen::CodeGenUtils* codegen_utils);
 };
+
+/** @} */
 
 }
 #endif // SLOT_DEFORM_TUPLE_CODEGEN_H_
