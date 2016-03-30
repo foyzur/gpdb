@@ -94,7 +94,7 @@ public:
 	}
 
 	// returns the generated unique function name
-	virtual std::string GetUniqueFuncName() const override final {
+	virtual const std::string& GetUniqueFuncName() const override final {
 		return func_name_;
 	}
 

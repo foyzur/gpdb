@@ -72,15 +72,36 @@ public:
    * @return Unique function name of the generated function.
    *
    **/
-	virtual std::string GetUniqueFuncName() const = 0;
+	virtual const std::string& GetUniqueFuncName() const = 0;
 
+	/**
+	 * @note   It is expected that return const char* memory will be valid
+	 *         as long as this interface is valid.
+	 *
+   * @return Original function name.
+   *
+   **/
 	virtual const char* GetOrigFuncName() const = 0;
+
+	/**
+   * @return true if the generation was successful.
+   *
+   **/
 	virtual bool IsGenerated() const = 0;
 
 protected:
+
+	/**
+   * @brief  Make given string unique by appending unique numnber
+   *
+   * @param  string / function name that needs to be made unique
+   * @return unique string for given input string
+   *
+   **/
   static std::string GenerateUniqueName(const std::string& prefix);
 
 private:
+  // Unique counter for all instance of CodeGen Interface
   static long unique_counter_;
 
 

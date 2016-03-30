@@ -3,7 +3,7 @@
 //	Copyright (C) 2016 Pivotal Software, Inc.
 //
 //	@filename:
-//		codegen.cc
+//		codegen_interface.cc
 //
 //	@doc:
 //		Implementation of codegen interface's static function
@@ -15,7 +15,6 @@ using namespace gpcodegen;
 
 long CodeGenInterface::unique_counter_ = 0;
 
-std::string CodeGenInterface::GenerateUniqueName(const std::string& prefix)
-{
+std::string CodeGenInterface::GenerateUniqueName(const std::string& prefix) {
 	return prefix + std::to_string(unique_counter_++);
 }
