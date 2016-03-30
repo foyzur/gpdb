@@ -17,6 +17,8 @@
 #ifndef GPCODEGEN_INSTANCE_METHOD_WRAPPERS_H_
 #define GPCODEGEN_INSTANCE_METHOD_WRAPPERS_H_
 
+#include <utility>
+
 namespace gpcodegen {
 
 /** \addtogroup codegen
