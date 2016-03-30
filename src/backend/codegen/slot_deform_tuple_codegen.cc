@@ -84,7 +84,7 @@ void SlotDeformTupleCodeGen::MakeWrapperFunction(gpcodegen::CodeGenUtils* codege
     		  llvm_function);
 
   codegen_utils->ir_builder()->SetInsertPoint(function_body);
-  llvm::Value* func_name_llvm = codegen_utils->GetConstant(this->GetOrigFunctionName());
+  llvm::Value* func_name_llvm = codegen_utils->GetConstant(this->GetOrigFuncName());
   codegen_utils->ir_builder()->CreateCall(
         llvm_elog_wrapper, {func_name_llvm});
 

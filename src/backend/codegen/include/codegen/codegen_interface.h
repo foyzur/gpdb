@@ -74,7 +74,7 @@ public:
    **/
 	virtual std::string GetUniqueFuncName() const = 0;
 
-	virtual const char* GetOrigFunctionName() const = 0;
+	virtual const char* GetOrigFuncName() const = 0;
 	virtual bool IsGenerated() const = 0;
 
 protected:

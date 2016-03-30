@@ -29,7 +29,7 @@ public:
 
 	virtual bool DoCodeGeneration(gpcodegen::CodeGenUtils* codegen_utils) override final;
 
-	virtual const char* GetOrigFunctionName() const override final {
+	virtual const char* GetOrigFuncName() const override final {
 	  return kSlotDeformTupleNamePrefix;
 	}
 
