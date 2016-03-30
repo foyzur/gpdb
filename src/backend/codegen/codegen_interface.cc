@@ -15,6 +15,6 @@ using namespace gpcodegen;
 
 long CodeGenInterface::unique_counter_ = 0;
 
-std::string CodeGenInterface::GenerateUniqueName(const std::string& prefix) {
-	return prefix + std::to_string(unique_counter_++);
+std::string CodeGenInterface::GenerateUniqueName(const std::string& orig_func_name) {
+	return orig_func_name + std::to_string(unique_counter_++);
 }
