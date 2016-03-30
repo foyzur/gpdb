@@ -15,7 +15,6 @@
 #include <string>
 #include <vector>
 
-#include "utils/codegen_utils.h"
 
 namespace gpcodegen
 {
@@ -24,8 +23,8 @@ namespace gpcodegen
  *  @{
  */
 
-// Forward declaration of manager
-class CodeGenManager;
+// Forward declaration
+class CodeGenUtils;
 
 /**
  * @brief Interface for all code generators.
@@ -46,7 +45,8 @@ public:
 	virtual bool GenerateCode(gpcodegen::CodeGenUtils* codegen_utils) = 0;
 
 	/**
-   * @brief Sets up the caller to use the corresponding regular version of the generated function.
+   * @brief Sets up the caller to use the corresponding regular version of the
+   *        generated function.
    *
    *
    * @return true on setting to regular version.
@@ -54,16 +54,18 @@ public:
 	virtual bool SetToRegular() = 0;
 
 	/**
-   * @brief Sets up the caller to use the generated function instead of the regular version.
+   * @brief Sets up the caller to use the generated function instead of the
+   *        regular version.
    *
-   * @param codegen_utils Facilitates in obtaining the function pointer from the compiled module.
+   * @param codegen_utils Facilitates in obtaining the function pointer from
+   *        the compiled module.
    * @return true on successfully setting to generated functions
    **/
 	virtual bool SetToGenerated(gpcodegen::CodeGenUtils* codegen_utils) = 0;
 
 	/**
-   * @brief Resets the state of the generator, including reverting back to regular
-   *        version of the function.
+   * @brief Resets the state of the generator, including reverting back to
+   *        regular version of the function.
    *
    **/
 	virtual void Reset() = 0;
@@ -84,7 +86,7 @@ public:
 	virtual const char* GetOrigFuncName() const = 0;
 
 	/**
-   * @return true if the generation was successful.
+   * @return true if the generation is successful.
    *
    **/
 	virtual bool IsGenerated() const = 0;
