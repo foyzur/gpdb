@@ -27,7 +27,7 @@ public:
 
 	virtual ~SlotDeformTupleCodeGen() = default;
 
-	virtual bool DoCodeGeneration(CodeGeneratorManager* manager,
+	virtual bool DoCodeGeneration(CodeGenManager* manager,
 			gpcodegen::CodeGenUtils* codegen_utils) override final;
 
 	virtual const char* GetFunctionPrefix() const override final {

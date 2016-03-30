@@ -26,7 +26,7 @@ extern "C"
 
 namespace gpcodegen
 {
-class CodeGeneratorManager;
+class CodeGenManager;
 
 template <class FuncPtrType>
 class BaseCodeGen: public CodeGenInterface
@@ -52,9 +52,9 @@ public:
   }
 
   // a template method design pattern to be overridden by the sub-class to implement the actual code generation
-	virtual bool DoCodeGeneration(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
+	virtual bool DoCodeGeneration(CodeGenManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
 
-	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) override final {
+	virtual bool GenerateCode(CodeGenManager* manager, gpcodegen::CodeGenUtils* codegen_utils) override final {
 		is_generated_ = DoCodeGeneration(manager, codegen_utils);
 	}
 

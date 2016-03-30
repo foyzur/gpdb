@@ -37,17 +37,17 @@ int InitCodeGen() {
 
 // creates a manager for an operator
 void* CodeGeneratorManager_Create() {
-	return new CodeGeneratorManager();
+	return new CodeGenManager();
 }
 
 // calls all the registered CodeGenFuncInfo to generate code
 bool CodeGeneratorManager_GenerateCode(void* manager) {
-	return static_cast<CodeGeneratorManager*>(manager)->GenerateCode();
+	return static_cast<CodeGenManager*>(manager)->GenerateCode();
 }
 
 // compiles and prepares all the code gened function pointers
 bool CodeGeneratorManager_PrepareGeneratedFunctions(void* manager) {
-	return static_cast<CodeGeneratorManager*>(manager)->PrepareGeneratedFunctions();
+	return static_cast<CodeGenManager*>(manager)->PrepareGeneratedFunctions();
 }
 
 // notifies a manager that the underlying operator has a parameter change
@@ -59,7 +59,7 @@ bool CodeGeneratorManager_NotifyParameterChange(void* manager) {
 
 // destroys a manager for an operator
 void CodeGeneratorManager_Destroy(void* manager) {
-	delete (static_cast<CodeGeneratorManager*>(manager));
+	delete (static_cast<CodeGenManager*>(manager));
 }
 
 void* GetActiveCodeGeneratorManager() {
@@ -73,7 +73,7 @@ void SetActiveCodeGeneratorManager(void* manager) {
 void* SlotDeformTupleCodeGen_Enroll(TupleTableSlot* slot, SlotDeformTupleFn regular_func_ptr,
 		SlotDeformTupleFn* ptr_to_chosen_func_ptr)
 {
-	CodeGeneratorManager* manager = static_cast<CodeGeneratorManager*>(
+	CodeGenManager* manager = static_cast<CodeGenManager*>(
 			GetActiveCodeGeneratorManager());
 
 	if (nullptr == manager)

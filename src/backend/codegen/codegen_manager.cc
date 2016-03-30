@@ -46,29 +46,31 @@ extern "C"
 
 using namespace gpcodegen;
 
-CodeGeneratorManager::CodeGeneratorManager() {
-	code_generator_.reset(new gpcodegen::CodeGenUtils("test_module"));
+CodeGenManager::CodeGenManager() {
+	codegen_utils_.reset(new gpcodegen::CodeGenUtils("test_module"));
 }
 
-bool CodeGeneratorManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGenInterface* generator) {
-
+bool CodeGenManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGenInterface* generator) {
+  	// Only CodeGenFuncLifespan_Parameter_Invariant is supported as of now
 	assert(funcLifespan == CodeGenFuncLifespan_Parameter_Invariant);
 	assert(nullptr != generator);
 	enrolled_code_generators_.emplace_back(generator);
 	return true;
 }
 
-bool CodeGeneratorManager::GenerateCode() {
+bool CodeGenManager::GenerateCode() {
 	for(auto& generator : enrolled_code_generators_) {
-		generator->GenerateCode(this, code_generator_.get());
+		generator->GenerateCode(this, codegen_utils_.get());
 	}
 
 	return true;
 }
 
-bool CodeGeneratorManager::PrepareGeneratedFunctions() {
-	elog(WARNING, "Compiling everything: %p", code_generator_.get());
-	bool compilation_status = code_generator_->PrepareForExecution(gpcodegen::CodeGenUtils::OptimizationLevel::kNone, true);
+bool CodeGenManager::PrepareGeneratedFunctions() {
+	elog(WARNING, "Compiling everything: %p", codegen_utils_.get());
+	// Call CodeGenUtils to compile entire module
+	bool compilation_status = codegen_utils_->PrepareForExecution
+	    (gpcodegen::CodeGenUtils::OptimizationLevel::kNone, true);
 
 	if (!compilation_status)
 	{
@@ -76,23 +78,25 @@ bool CodeGeneratorManager::PrepareGeneratedFunctions() {
 		return compilation_status;
 	}
 
-	gpcodegen::CodeGenUtils* llvm_helper = code_generator_.get();
+  	// On successful compilation, go through all generator and swap
+  	// the pointer so compiled function get called
+	gpcodegen::CodeGenUtils* codegen_utils = codegen_utils_.get();
 	for(auto& generator : enrolled_code_generators_) {
-		generator->SetToGenerated(llvm_helper);
+		generator->SetToGenerated(codegen_utils);
 	}
 
 	return true;
 }
 
 // notifies that the underlying operator has a parameter change
-bool CodeGeneratorManager::NotifyParameterChange() {
+bool CodeGenManager::NotifyParameterChange() {
 	// no support for parameter change yet
 	assert(false);
 	return false;
 }
 
 // Invalidate all generated functions
-bool CodeGeneratorManager::InvalidateGeneratedFunctions() {
+bool CodeGenManager::InvalidateGeneratedFunctions() {
 	// no support for invalidation of generated function
 	assert(false);
 	return false;

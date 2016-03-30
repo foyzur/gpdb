@@ -752,7 +752,7 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	if (result != NULL)
 	{
 		SAVE_EXECUTOR_MEMORY_ACCOUNT(result, curMemoryAccount);
-		result->CodeGeneratorManager = codeGenManager;
+		result->CodeGenManager = codeGenManager;
 		CodeGeneratorManager_GenerateCode(codeGenManager);
 		CodeGeneratorManager_PrepareGeneratedFunctions(codeGenManager);
 	}
@@ -815,7 +815,7 @@ ExecProcNode(PlanState *node)
 {
 	TupleTableSlot *result = NULL;
 
-	START_CODE_GENERATOR_MANAGER(node->CodeGeneratorManager);
+	START_CODE_GENERATOR_MANAGER(node->CodeGenManager);
 	{
 	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
 	{
@@ -1756,9 +1756,9 @@ ExecEndNode(PlanState *node)
 			break;
 	}
 
-	Assert(NULL != node->CodeGeneratorManager);
-	CodeGeneratorManager_Destroy(node->CodeGeneratorManager);
-	node->CodeGeneratorManager = NULL;
+	Assert(NULL != node->CodeGenManager);
+	CodeGeneratorManager_Destroy(node->CodeGenManager);
+	node->CodeGenManager = NULL;
 
 	estate->currentSliceIdInPlan = origSliceIdInPlan;
 	estate->currentExecutingSliceId = origExecutingSliceId;

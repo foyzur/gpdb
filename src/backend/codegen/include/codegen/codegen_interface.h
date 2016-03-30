@@ -19,7 +19,7 @@
 
 namespace gpcodegen
 {
-class CodeGeneratorManager;
+class CodeGenManager;
 
 class CodeGenInterface
 {
@@ -32,7 +32,7 @@ protected:
 public:
 	virtual ~CodeGenInterface() = default;
 
-	virtual bool GenerateCode(CodeGeneratorManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
+	virtual bool GenerateCode(CodeGenManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
 	// sets the chosen function pointer to the regular version
 	virtual bool SetToRegular() = 0;
 	// sets the chosen function pointer to the code gened version

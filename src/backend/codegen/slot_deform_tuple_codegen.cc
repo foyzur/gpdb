@@ -106,7 +106,7 @@ void SlotDeformTupleCodeGen::MakeWrapperFunction(gpcodegen::CodeGenUtils* codege
   }
 }
 
-bool SlotDeformTupleCodeGen::DoCodeGeneration(CodeGeneratorManager* manager,
+bool SlotDeformTupleCodeGen::DoCodeGeneration(CodeGenManager* manager,
 			gpcodegen::CodeGenUtils* codegen_utils) {
 	elog(WARNING, "GenerateCode: %p, %s", codegen_utils, GetFuncName().c_str());
 
