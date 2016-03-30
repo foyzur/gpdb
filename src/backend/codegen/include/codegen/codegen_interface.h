@@ -19,32 +19,74 @@
 
 namespace gpcodegen
 {
+
+/** \addtogroup gpcodegen
+ *  @{
+ */
+
+// Forward declaration of manager
 class CodeGenManager;
 
+/**
+ * @brief Interface for all code generators.
+ **/
 class CodeGenInterface
 {
-private:
-	static long unique_counter_;
-
-protected:
-	static std::string GenerateUniqueName(const std::string& prefix);
-
 public:
+
 	virtual ~CodeGenInterface() = default;
 
-	virtual bool GenerateCode(CodeGenManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
-	// sets the chosen function pointer to the regular version
+	/**
+   * @brief Generates specialized code at run time.
+   *
+   *
+   * @param codegen_utils Utility to ease the code generation process.
+   * @return true on successful generation.
+   **/
+	virtual bool GenerateCode(gpcodegen::CodeGenUtils* codegen_utils) = 0;
+
+	/**
+   * @brief Sets up the caller to use the corresponding regular version of the generated function.
+   *
+   *
+   * @return true on setting to regular version.
+   **/
 	virtual bool SetToRegular() = 0;
-	// sets the chosen function pointer to the code gened version
+
+	/**
+   * @brief Sets up the caller to use the generated function instead of the regular version.
+   *
+   * @param codegen_utils Facilitates in obtaining the function pointer from the compiled module.
+   * @return true on successfully setting to generated functions
+   **/
 	virtual bool SetToGenerated(gpcodegen::CodeGenUtils* codegen_utils) = 0;
-	// prepare for a new code generation; previous one is no longer valid
+
+	/**
+   * @brief Resets the state of the generator, including reverting back to regular
+   *        version of the function.
+   *
+   **/
 	virtual void Reset() = 0;
 
-	// returns the generated unique function name
-	virtual std::string GetFuncName() const = 0;
-	virtual const char* GetFunctionPrefix() const = 0;
+	/**
+   * @return Unique function name of the generated function.
+   *
+   **/
+	virtual std::string GetUniqueFuncName() const = 0;
+
+	virtual const char* GetOrigFunctionName() const = 0;
 	virtual bool IsGenerated() const = 0;
+
+protected:
+  static std::string GenerateUniqueName(const std::string& prefix);
+
+private:
+  static long unique_counter_;
+
+
 };
+
+/** @} */
 
 }
 

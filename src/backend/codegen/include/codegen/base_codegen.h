@@ -52,10 +52,10 @@ public:
   }
 
   // a template method design pattern to be overridden by the sub-class to implement the actual code generation
-	virtual bool DoCodeGeneration(CodeGenManager* manager, gpcodegen::CodeGenUtils* codegen_utils) = 0;
+	virtual bool DoCodeGeneration(gpcodegen::CodeGenUtils* codegen_utils) = 0;
 
-	virtual bool GenerateCode(CodeGenManager* manager, gpcodegen::CodeGenUtils* codegen_utils) override final {
-		is_generated_ = DoCodeGeneration(manager, codegen_utils);
+	virtual bool GenerateCode(gpcodegen::CodeGenUtils* codegen_utils) override final {
+		is_generated_ = DoCodeGeneration(codegen_utils);
 	}
 
 	// Sets the chosen function pointer to the regular version.
@@ -72,8 +72,8 @@ public:
 			return false;
 		}
 
-		elog(WARNING, "SetToGenerated: %p, %s", codegen_utils, GetFuncName().c_str());
-		auto compiled_func_ptr = codegen_utils->GetFunctionPointerTypeDef<FuncPtrType>(GetFuncName());
+		elog(WARNING, "SetToGenerated: %p, %s", codegen_utils, GetUniqueFuncName().c_str());
+		auto compiled_func_ptr = codegen_utils->GetFunctionPointerTypeDef<FuncPtrType>(GetUniqueFuncName());
 
 		elog(WARNING, "compiled_func_ptr: %p", compiled_func_ptr);
 		//auto compiled_func_ptr = codegen_utils->GetFunctionPointer<traits::return_type, traits::arg_type>(func_name_);
@@ -94,7 +94,7 @@ public:
 	}
 
 	// returns the generated unique function name
-	virtual std::string GetFuncName() const override final {
+	virtual std::string GetUniqueFuncName() const override final {
 		return func_name_;
 	}
 

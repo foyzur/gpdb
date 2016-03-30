@@ -77,14 +77,14 @@ void SlotDeformTupleCodeGen::MakeWrapperFunction(gpcodegen::CodeGenUtils* codege
   // type-signature that merely forwards its arguments to the external
   // function as-is.
   llvm::Function* llvm_function
-      = codegen_utils->CreateFunctionTypeDef<decltype(regular_func_pointer)>(GetFuncName());
+      = codegen_utils->CreateFunctionTypeDef<decltype(regular_func_pointer)>(GetUniqueFuncName());
 
   llvm::BasicBlock* function_body
       = codegen_utils->CreateBasicBlock("fn_body",
     		  llvm_function);
 
   codegen_utils->ir_builder()->SetInsertPoint(function_body);
-  llvm::Value* func_name_llvm = codegen_utils->GetConstant(this->GetFunctionPrefix());
+  llvm::Value* func_name_llvm = codegen_utils->GetConstant(this->GetOrigFunctionName());
   codegen_utils->ir_builder()->CreateCall(
         llvm_elog_wrapper, {func_name_llvm});
 
@@ -106,9 +106,8 @@ void SlotDeformTupleCodeGen::MakeWrapperFunction(gpcodegen::CodeGenUtils* codege
   }
 }
 
-bool SlotDeformTupleCodeGen::DoCodeGeneration(CodeGenManager* manager,
-			gpcodegen::CodeGenUtils* codegen_utils) {
-	elog(WARNING, "GenerateCode: %p, %s", codegen_utils, GetFuncName().c_str());
+bool SlotDeformTupleCodeGen::DoCodeGeneration(CodeGenUtils* codegen_utils) {
+	elog(WARNING, "GenerateCode: %p, %s", codegen_utils, GetUniqueFuncName().c_str());
 
 	MakeWrapperFunction(codegen_utils);
 

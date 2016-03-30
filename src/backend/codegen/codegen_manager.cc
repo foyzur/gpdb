@@ -60,7 +60,7 @@ bool CodeGenManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeG
 
 bool CodeGenManager::GenerateCode() {
 	for(auto& generator : enrolled_code_generators_) {
-		generator->GenerateCode(this, codegen_utils_.get());
+		generator->GenerateCode(codegen_utils_.get());
 	}
 
 	return true;
