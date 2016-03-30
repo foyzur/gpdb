@@ -19,8 +19,7 @@
 #include "codegen/utils/macros.h"
 #include "codegen/codegen_wrapper.h"
 
-namespace gpcodegen
-{
+namespace gpcodegen {
 /** \addtogroup gpcodegen
  *  @{
  */
@@ -34,57 +33,69 @@ class CodeGenInterface;
 /**
  * @brief Object that manages all code gen.
  **/
-class CodeGenManager
-{
+class CodeGenManager {
 public:
-  /**
-   * @brief Constructor.
-   *
-   **/
+	/**
+	 * @brief Constructor.
+	 *
+	 **/
 	explicit CodeGenManager();
 
 	~CodeGenManager() = default;
 
 	/**
-   * @brief Enroll a code generator with manager
-   *
-   * @note Manager manage the memory of enrolled generator.
-   *
-   * @param funcLifespan Based on life span corresponding CodeGen_Utils will be used to generate
-   * @param generator    Generator that needs to be enrolled with manager.
-   * @return true on successful enrollment
-   **/
-	bool EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeGenInterface* generator);
+	 * @brief Enroll a code generator with manager
+	 *
+	 * @note Manager manages the memory of enrolled generator.
+	 *
+	 * @param funcLifespan Based on life span corresponding CodeGen_Utils will be used to generate
+	 * @param generator    Generator that needs to be enrolled with manager.
+	 * @return true on successful enrollment.
+	 **/
+	bool EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan,
+			CodeGenInterface* generator);
 
 	/**
-   * @brief Make all enrolled generators to generate code
-   *
-   * @return true on successful enrollment
-   **/
+	 * @brief Make all enrolled generators to generate code.
+	 *
+	 * @return true if any enrolled code generator successfully generated code.
+	 **/
 	bool GenerateCode();
 
 	/**
-   * @brief Compile all the generated functions. On success, set compiled function
-   *        to be called instead of regular functions
-   *
-   * @return true on successful compilation or return false
-   **/
+	 * @brief Compile all the generated functions. On success, caller gets
+	 * 		to call the generated method.
+	 *
+	 * @return true on successful compilation or return false
+	 **/
 	bool PrepareGeneratedFunctions();
 
-	// notifies that the underlying operator has a parameter change
-	bool NotifyParameterChange();
+	/**
+	 * @brief 	Notifies the manager of a parameter change.
+	 *
+	 * @note 	This is called during a ReScan or other parameter change process.
+	 * 			Upon receiving this notification the manager may invalidate all the
+	 * 			generated code that depend on parameters.
+	 *
+	 **/
+	void NotifyParameterChange();
 
-	// Invalidate all generated functions
+	/**
+	 * @brief Invalidate all generated functions.
+	 *
+	 * @return true if successfully invalidated.
+	 **/
 	bool InvalidateGeneratedFunctions();
 
 private:
-  // CodeGenUtils provides a facade to LLVM subsystem
-  std::unique_ptr<gpcodegen::CodeGenUtils> codegen_utils_;
+	// CodeGenUtils provides a facade to LLVM subsystem.
+	std::unique_ptr<gpcodegen::CodeGenUtils> codegen_utils_;
 
-  // list of all enrolled code generators
-  std::vector<std::unique_ptr<CodeGenInterface>> enrolled_code_generators_;
+	// List of all enrolled code generators.
+	std::vector<std::unique_ptr<CodeGenInterface>> enrolled_code_generators_;
 
-  DISALLOW_COPY_AND_ASSIGN(CodeGenManager);
+	DISALLOW_COPY_AND_ASSIGN(CodeGenManager)
+	;
 
 };
 

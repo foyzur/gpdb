@@ -71,19 +71,19 @@ public:
 	virtual void Reset() = 0;
 
 	/**
-	* @return Unique function name of the generated function to avoid name collision.
-	*
-	**/
-	virtual const std::string& GetUniqueFuncName() const = 0;
-
-	/**
 	* @note   It is expected that returned const char* memory will be valid
 	*         as long as this interface instance is valid.
 	*
 	* @return Original function name.
 	*
 	**/
-	virtual const char* GetOrigFuncName() const = 0;
+	virtual const std::string& GetOrigFuncName() const = 0;
+
+	/**
+	* @return Unique function name of the generated function to avoid name collision.
+	*
+	**/
+	virtual const std::string& GetUniqueFuncName() const = 0;
 
 	/**
 	* @return true if the code generation is successful.

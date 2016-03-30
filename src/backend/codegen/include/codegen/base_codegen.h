@@ -43,39 +43,18 @@ public:
 		SetToRegular(regular_func_ptr_, ptr_to_chosen_func_ptr_);
 	}
 
-	/**
-	 * @brief Generates specialized code at run time.
-	 *
-	 *
-	 * @param codegen_utils Utility to ease the code generation process.
-	 * @return true on successful generation.
-	 **/
 	virtual bool GenerateCode(gpcodegen::CodeGenUtils* codegen_utils)
 	override final {
 		is_generated_ = DoCodeGeneration(codegen_utils);
 		return is_generated_;
 	}
 
-	/**
-	 * @brief Sets up the caller to use the corresponding regular version of the
-	 *        generated function.
-	 *
-	 * @return true on setting to regular version.
-	 **/
 	virtual bool SetToRegular() override final {
 		assert(nullptr != regular_func_ptr_);
 		SetToRegular(regular_func_ptr_, ptr_to_chosen_func_ptr_);
 		return true;
 	}
 
-	/**
-	 * @brief Sets up the caller to use the generated function instead of the
-	 *        regular version.
-	 *
-	 * @param codegen_utils Facilitates in obtaining the function pointer from
-	 *        the compiled module.
-	 * @return true on successfully setting to generated functions.
-	 **/
 	virtual bool SetToGenerated(gpcodegen::CodeGenUtils* codegen_utils)
 	override final {
 		if (false == IsGenerated()) {
@@ -93,27 +72,18 @@ public:
 		return false;
 	}
 
-	/**
-	 * @brief Resets the state of the generator, including reverting back to
-	 *        regular version of the function.
-	 *
-	 **/
 	virtual void Reset() override final {
 		SetToRegular();
 	}
 
-	/**
-	 * @return Unique function name of the generated function.
-	 *
-	 **/
+	virtual const std::string& GetOrigFuncName() const override final {
+		return orig_func_name_;
+	}
+
 	virtual const std::string& GetUniqueFuncName() const override final {
 		return unique_func_name_;
 	}
 
-	/**
-	 * @return true if the generation is successful.
-	 *
-	 **/
 	virtual bool IsGenerated() const override final {
 		return is_generated_;
 	}
@@ -156,10 +126,11 @@ protected:
 	 **/
 	explicit BaseCodeGen(const std::string& orig_func_name,
 			FuncPtrType regular_func_ptr, FuncPtrType* ptr_to_chosen_func_ptr) :
-			unique_func_name_(
-					CodeGenInterface::GenerateUniqueName(orig_func_name)), regular_func_ptr_(
-							regular_func_ptr), ptr_to_chosen_func_ptr_(
-									ptr_to_chosen_func_ptr), is_generated_(false) {
+			orig_func_name_(orig_func_name),
+			unique_func_name_(CodeGenInterface::GenerateUniqueName(orig_func_name)),
+			regular_func_ptr_(regular_func_ptr),
+			ptr_to_chosen_func_ptr_(ptr_to_chosen_func_ptr),
+			is_generated_(false) {
 
 		// Initialize the caller to use regular version of generated function.
 		SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
@@ -180,6 +151,7 @@ protected:
 	virtual bool DoCodeGeneration(gpcodegen::CodeGenUtils* codegen_utils) = 0;
 
 private:
+	std::string orig_func_name_;
 	std::string unique_func_name_;
 	FuncPtrType regular_func_ptr_;
 	FuncPtrType* ptr_to_chosen_func_ptr_;

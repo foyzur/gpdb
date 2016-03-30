@@ -59,11 +59,12 @@ bool CodeGenManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeG
 }
 
 bool CodeGenManager::GenerateCode() {
+	bool gen_status = false;
 	for(auto& generator : enrolled_code_generators_) {
-		generator->GenerateCode(codegen_utils_.get());
+		gen_status = generator->GenerateCode(codegen_utils_.get()) || gen_status;
 	}
 
-	return true;
+	return gen_status;
 }
 
 bool CodeGenManager::PrepareGeneratedFunctions() {
@@ -89,10 +90,9 @@ bool CodeGenManager::PrepareGeneratedFunctions() {
 }
 
 // notifies that the underlying operator has a parameter change
-bool CodeGenManager::NotifyParameterChange() {
+void CodeGenManager::NotifyParameterChange() {
 	// no support for parameter change yet
 	assert(false);
-	return false;
 }
 
 // Invalidate all generated functions

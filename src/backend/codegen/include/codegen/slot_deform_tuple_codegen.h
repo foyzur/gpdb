@@ -41,17 +41,6 @@ public:
 
 	virtual ~SlotDeformTupleCodeGen() = default;
 
-	/**
-	* @note   It is expected that returned const char* memory will be valid
-	*         as long as this interface instance is valid.
-	*
-	* @return Original function name.
-	*
-	**/
-	virtual const char* GetOrigFuncName() const override final {
-		return kSlotDeformTupleNamePrefix;
-	}
-
 protected:
 	virtual bool DoCodeGeneration(gpcodegen::CodeGenUtils* codegen_utils)
 			override final;
@@ -61,7 +50,13 @@ private:
 
 	static constexpr char kSlotDeformTupleNamePrefix[] = "slot_deform_tuple";
 
-	void MakeWrapperFunction(gpcodegen::CodeGenUtils* codegen_utils);
+	/**
+	 * @brief Generates runtime code that calls slot_deform_tuple as an external function.
+	 *
+	 * @param codegen_utils Utility to ease the code generation process.
+	 * @return true on successful generation.
+	 **/
+	bool GenerateSimpleSlotDeformTuple(gpcodegen::CodeGenUtils* codegen_utils);
 };
 
 /** @} */
