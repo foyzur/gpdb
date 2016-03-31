@@ -35,6 +35,7 @@ MOCK_OBJS=\
 ifeq ($(enable_orca),yes)
 MOCK_OBJS+=$(top_srcdir)/src/test/unit/mock/gpopt_mock.o
 endif
+MOCK_OBJS+=$(top_srcdir)/src/test/unit/mock/gpcodegen_mock.o
 
 # $(OBJFILES) contains %/objfiles.txt, because src/backend/Makefile will
 # create it with rule=objfiles.txt, which is not expected in postgres rule.

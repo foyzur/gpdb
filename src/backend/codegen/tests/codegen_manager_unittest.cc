@@ -54,6 +54,7 @@
 #include "gtest/gtest.h"
 
 
+
 namespace gpcodegen {
 
 void dummy_slot_deform_tuple(TupleTableSlot *slot, int natts) {
