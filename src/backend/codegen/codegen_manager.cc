@@ -39,10 +39,6 @@
 //#include "access/tupmacs.h"
 //#include "c.h"
 #include "catalog/pg_attribute.h"
-extern "C"
-{
-#include "utils/elog.h"
-}
 
 using namespace gpcodegen;
 
@@ -58,24 +54,22 @@ bool CodeGenManager::EnrollCodeGenerator(CodeGenFuncLifespan funcLifespan, CodeG
 	return true;
 }
 
-bool CodeGenManager::GenerateCode() {
-	bool gen_status = false;
+size_t CodeGenManager::GenerateCode() {
+	size_t success_count = 0;
 	for(auto& generator : enrolled_code_generators_) {
-		gen_status = generator->GenerateCode(codegen_utils_.get()) || gen_status;
+		success_count += (generator->GenerateCode(codegen_utils_.get()) == true ? 1 : 0);
 	}
 
-	return gen_status;
+	return success_count;
 }
 
 bool CodeGenManager::PrepareGeneratedFunctions() {
-	elog(WARNING, "Compiling everything: %p", codegen_utils_.get());
-	// Call CodeGenUtils to compile entire module
+  // Call CodeGenUtils to compile entire module
 	bool compilation_status = codegen_utils_->PrepareForExecution
 	    (gpcodegen::CodeGenUtils::OptimizationLevel::kNone, true);
 
 	if (!compilation_status)
 	{
-		elog(WARNING, "Cannot compile");
 		return compilation_status;
 	}
 

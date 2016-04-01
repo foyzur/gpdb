@@ -16,6 +16,7 @@
 #include "codegen/utils/clang_compiler.h"
 #include "codegen/utils/utility.h"
 #include "codegen/utils/instance_method_wrappers.h"
+#include "codegen/utils/codegen_utils.h"
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -33,13 +34,15 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/Casting.h"
 
+/* extern "C" {
 #include "postgres.h"
 #include "c.h"
 #include "access/htup.h"
 #include "access/tupmacs.h"
 #include "catalog/pg_attribute.h"
 #include "executor/tuptable.h"
-#include "codegen/utils/codegen_utils.h"
+#include "utils/elog.h"
+}*/
 
 using namespace gpcodegen;
 
@@ -54,7 +57,7 @@ SlotDeformTupleCodeGen::SlotDeformTupleCodeGen(TupleTableSlot* slot,
 }
 
 static void ElogWrapper(const char* func_name) {
-	elog(INFO, "Calling wrapped function: %s", func_name);
+	//elog(INFO, "Calling wrapped function: %s", func_name);
 }
 
 bool SlotDeformTupleCodeGen::GenerateSimpleSlotDeformTuple(
@@ -102,7 +105,7 @@ bool SlotDeformTupleCodeGen::GenerateSimpleSlotDeformTuple(
 }
 
 bool SlotDeformTupleCodeGen::DoCodeGeneration(CodeGenUtils* codegen_utils) {
-	elog(WARNING, "GenerateCode: %p, %s", codegen_utils, GetUniqueFuncName().c_str());
+	//elog(WARNING, "GenerateCode: %p, %s", codegen_utils, GetUniqueFuncName().c_str());
 
 	GenerateSimpleSlotDeformTuple(codegen_utils);
 

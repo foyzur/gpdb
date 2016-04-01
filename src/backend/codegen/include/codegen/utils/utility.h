@@ -17,6 +17,7 @@
 #define GPCODEGEN_UTILITY_H_
 
 #include "llvm/IR/Function.h"
+#include <utility>
 
 namespace gpcodegen {
 

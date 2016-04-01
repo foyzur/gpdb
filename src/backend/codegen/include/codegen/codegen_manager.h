@@ -58,9 +58,9 @@ public:
 	/**
 	 * @brief Make all enrolled generators to generate code.
 	 *
-	 * @return true if any enrolled code generator successfully generated code.
+	 * @return The number of enrolled codegen that successfully generated code.
 	 **/
-	bool GenerateCode();
+	size_t GenerateCode();
 
 	/**
 	 * @brief Compile all the generated functions. On success, caller gets
@@ -87,6 +87,13 @@ public:
 	 **/
 	bool InvalidateGeneratedFunctions();
 
+  /**
+   * @return Number of enrolled generators.
+   **/
+	size_t GetEnrollmentCount() {
+	  return enrolled_code_generators_.size();
+	}
+
 private:
 	// CodeGenUtils provides a facade to LLVM subsystem.
 	std::unique_ptr<gpcodegen::CodeGenUtils> codegen_utils_;
@@ -94,8 +101,7 @@ private:
 	// List of all enrolled code generators.
 	std::vector<std::unique_ptr<CodeGenInterface>> enrolled_code_generators_;
 
-	DISALLOW_COPY_AND_ASSIGN(CodeGenManager)
-	;
+	DISALLOW_COPY_AND_ASSIGN(CodeGenManager);
 
 };
 

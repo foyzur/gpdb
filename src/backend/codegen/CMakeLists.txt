@@ -158,6 +158,8 @@ set_target_properties(SUBSYS.o
 target_link_libraries(
     gpcodegen
 )
+add_library(SUBSYS SHARED codegen_interface.cc codegen_manager.cc codegen_wrapper.cc slot_deform_tuple_codegen.cc)
+target_link_libraries(SUBSYS gpcodegen)
 
 # Integrate with GPDB build system
 # GPDB unit tests use unittest-check instead of test, so we add an alias target
@@ -179,7 +181,7 @@ enable_testing()
 foreach(TEST_SRC ${TEST_SOURCES})
     get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE)
     add_executable(${TEST_NAME} EXCLUDE_FROM_ALL ${TEST_SRC})
-    target_link_libraries(${TEST_NAME} gpcodegen gtest)
+    target_link_libraries(${TEST_NAME} SUBSYS gpcodegen gtest)
     add_test(${TEST_NAME} ${TEST_NAME})
     add_dependencies(unittest-check ${TEST_NAME})
 endforeach()
