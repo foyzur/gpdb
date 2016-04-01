@@ -170,7 +170,7 @@ SET(TEST_SOURCES
     tests/clang_compiler_unittest.cc
     tests/codegen_utils_unittest.cc
     tests/instance_method_wrappers_unittest.cc
-    tests/codegen_manager_unittest.cc)
+    tests/codegen_framework_unittest.cc)
 
 # Googletest framework for tests.
 SET(GTEST_DIR ../../../gpAux/extensions/gtest)
