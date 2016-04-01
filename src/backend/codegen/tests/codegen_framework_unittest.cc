@@ -188,6 +188,22 @@ class CodeGenManagerTest : public ::testing::Test {
   std::unique_ptr<CodeGenManager> manager_;
 };
 
+TEST_F(CodeGenManagerTest, TestGetters) {
+  sum_func_ptr = nullptr;
+  SumCodeGenerator* code_gen = new SumCodeGenerator(SumFuncRegular, &sum_func_ptr);
+
+  EXPECT_EQ(SumCodeGenerator::kAddFuncNamePrefix, code_gen->GetOrigFuncName());
+  // Static unique_counter will be zero to begin with. So uniqueFuncName return with
+  // with suffix zero.
+  EXPECT_EQ(SumCodeGenerator::kAddFuncNamePrefix + std::to_string(0), code_gen->GetUniqueFuncName());
+  ASSERT_TRUE(manager_->EnrollCodeGenerator(CodeGenFuncLifespan_Parameter_Invariant,
+                                                 code_gen));
+  ASSERT_FALSE(code_gen->IsGenerated());
+  EXPECT_EQ(1, manager_->GenerateCode());
+  ASSERT_TRUE(code_gen->IsGenerated());
+
+}
+
 TEST_F(CodeGenManagerTest, EnrollCodeGeneratorTest) {
   sum_func_ptr = nullptr;
   EnrollCodeGen<SumCodeGenerator, SumFunc>(SumFuncRegular, &sum_func_ptr);
@@ -246,6 +262,9 @@ TEST_F(CodeGenManagerTest, PrepareGeneratedFunctionsNoCompilationErrorTest) {
   // For failed_func_ptr, code generation was unsuccessful. So, pointer should not change.
   ASSERT_TRUE(SumFuncRegular == failed_func_ptr);
 
+  // Check generate SumFuncRegular works as expected;
+  EXPECT_EQ(3, sum_func_ptr(1, 2));
+
   // Reset the manager, so that all the code generators go away
   manager_.reset(nullptr);
 
@@ -278,18 +297,27 @@ TEST_F(CodeGenManagerTest, PrepareGeneratedFunctionsNoCompilationErrorTest) {
   ASSERT_TRUE(UncompilableFuncRegular == uncompilable_func_ptr);
 }*/
 
-TEST_F(CodeGenManagerTest, TestGetters) {
-	sum_func_ptr = nullptr;
-	CodeGenInterface* code_gen = new SumCodeGenerator(SumFuncRegular, &sum_func_ptr);
+TEST_F(CodeGenManagerTest, ResetTest) {
+  sum_func_ptr = nullptr;
+  SumCodeGenerator* code_gen = new SumCodeGenerator(SumFuncRegular, &sum_func_ptr);
 
-	EXPECT_EQ(SumCodeGenerator::kAddFuncNamePrefix, code_gen->GetOrigFuncName());
-	EXPECT_EQ(SumCodeGenerator::kAddFuncNamePrefix + std::to_string(0), code_gen->GetUniqueFuncName());
-	ASSERT_TRUE(manager_->EnrollCodeGenerator(CodeGenFuncLifespan_Parameter_Invariant,
-	                                              code_gen));
+  ASSERT_TRUE(manager_->EnrollCodeGenerator(CodeGenFuncLifespan_Parameter_Invariant,
+                                                   code_gen));
+  EXPECT_EQ(1, manager_->GenerateCode());
 
-	ASSERT_FALSE(code_gen->IsGenerated());
-	EXPECT_EQ(1, manager_->GenerateCode());
-	ASSERT_TRUE(code_gen->IsGenerated());
+  // Make sure the function pointers refer to regular versions
+  ASSERT_TRUE(SumFuncRegular == sum_func_ptr);
+
+  // This should update function pointers to generated version, if generation was successful
+  ASSERT_TRUE(manager_->PrepareGeneratedFunctions());
+
+  // For sum_func_ptr, we successfully generated code. So, pointer should reflect that.
+  ASSERT_TRUE(SumFuncRegular != sum_func_ptr);
+
+  code_gen->Reset();
+
+  // Make sure Reset set the function pointer back to regular version.
+  ASSERT_TRUE(SumFuncRegular == sum_func_ptr);
 
 }
 
