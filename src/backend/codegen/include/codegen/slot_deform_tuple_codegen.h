@@ -56,7 +56,9 @@ private:
 	 * @param codegen_utils Utility to ease the code generation process.
 	 * @return true on successful generation.
 	 **/
-	bool GenerateSimpleSlotDeformTuple(gpcodegen::CodeGenUtils* codegen_utils);
+	llvm::Function* GenerateSimpleSlotDeformTuple(gpcodegen::CodeGenUtils* codegen_utils);
+
+	bool GenerateSlotDeformTuple(gpcodegen::CodeGenUtils* codegen_utils);
 };
 
 /** @} */

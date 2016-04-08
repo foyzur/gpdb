@@ -16,6 +16,8 @@
 
 #include "codegen/utils/codegen_utils.h"
 
+extern int memory_profiler_dataset_size;
+
 using namespace gpcodegen;
 
 // the current code generator manager that oversees all code generators
@@ -70,7 +72,7 @@ void* SlotDeformTupleCodeGen_Enroll(TupleTableSlot* slot, SlotDeformTupleFn regu
 	CodeGenManager* manager = static_cast<CodeGenManager*>(
 			GetActiveCodeGeneratorManager());
 
-	if (nullptr == manager)
+	if (nullptr == manager || memory_profiler_dataset_size != 10)
 	{
 		BaseCodeGen<SlotDeformTupleFn>::SetToRegular(regular_func_ptr, ptr_to_chosen_func_ptr);
 		return nullptr;

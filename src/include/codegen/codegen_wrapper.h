@@ -67,8 +67,10 @@ void* GetActiveCodeGeneratorManager();
 void SetActiveCodeGeneratorManager(void* manager);
 
 // returns the pointer to the CodeGenFuncInfo
-void* SlotDeformTupleCodeGen_Enroll(struct TupleTableSlot* slot, SlotDeformTupleFn regular_func_ptr, SlotDeformTupleFn* ptr_to_regular_func_ptr);
+void* SimpleSlotDeformTupleCodeGen_Enroll(struct TupleTableSlot* slot, SlotDeformTupleFn regular_func_ptr, SlotDeformTupleFn* ptr_to_regular_func_ptr);
 
+// returns the pointer to the CodeGenFuncInfo
+void* SlotDeformTupleCodeGen_Enroll(struct TupleTableSlot* slot, SlotDeformTupleFn regular_func_ptr, SlotDeformTupleFn* ptr_to_regular_func_ptr);
 
 #ifdef __cplusplus
 }  // extern "C"
