@@ -3,7 +3,7 @@
 //  Copyright 2016 Pivotal Software, Inc.
 //
 //  @filename:
-//    code_generator.h
+//    codegen_utils.h
 //
 //  @doc:
 //    Object that manages runtime code generation for a single LLVM module.
@@ -13,8 +13,8 @@
 //
 //---------------------------------------------------------------------------
 
-#ifndef GPCODEGEN_CODE_GENERATOR_H_
-#define GPCODEGEN_CODE_GENERATOR_H_
+#ifndef GPCODEGEN_CODEGEN_UTILS_H_  // NOLINT(build/header_guard)
+#define GPCODEGEN_CODEGEN_UTILS_H_
 
 #include <cassert>
 #include <cstddef>
@@ -45,18 +45,19 @@
 namespace gpcodegen {
 
 // Forward declaration of helper class for friending purposes.
-namespace code_generator_detail {
+namespace codegen_utils_detail {
 template <typename, typename> class ConstantMaker;
-}  // namespace code_generator_detail
+template <typename> class FunctionTypeUnpacker;
+}  // namespace codegen_utils_detail
 
-/** \addtogroup codegen
+/** \addtogroup gpcodegen
  *  @{
  */
 
 /**
  * @brief Object that manages runtime code generation for a single LLVM module.
  **/
-class CodeGenerator {
+class CodegenUtils {
  public:
   enum class OptimizationLevel : unsigned {
     kNone = 0,   // -O0
@@ -75,17 +76,17 @@ class CodeGenerator {
    * @brief Constructor.
    *
    * @param module_name A human-readable name for the module that this
-   *        CodeGenerator will manage.
+   *        CodegenUtils will manage.
    **/
-  explicit CodeGenerator(llvm::StringRef module_name);
+  explicit CodegenUtils(llvm::StringRef module_name);
 
-  ~CodeGenerator() {
+  ~CodegenUtils() {
   }
 
   /**
    * @brief Initialize global LLVM state (in particular, information about the
    *        host machine which will be the target for code generation). Must be
-   *        called at least once before creating CodeGenerator objects.
+   *        called at least once before creating CodegenUtils objects.
    *
    * @return true if initilization was successful, false if some part of
    *         initialization failed.
@@ -100,10 +101,10 @@ class CodeGenerator {
   }
 
   /**
-   * @return The LLVM Module that is managed by this CodeGenerator, or NULL if
+   * @return The LLVM Module that is managed by this CodegenUtils, or NULL if
    *         PrepareForExecution() has already been called.
    *
-   * @note When a CodeGenerator is initially created, a Module is created with
+   * @note When a CodegenUtils is initially created, a Module is created with
    *       it and it is accessible via this method. The Module is mutable and
    *       new code can be inserted into it UNTIL PrepareForExecution() is
    *       called, at which point the Module's code is "frozen" and can no
@@ -135,7 +136,7 @@ class CodeGenerator {
    *
    * @tparam CppType a C++ type to map to an LLVM type.
    * @return A pointer to CppType's equivalent LLVM type in this
-   *         CodeGenerator's context.
+   *         CodegenUtils's context.
    **/
   template <typename CppType>
   llvm::Type* GetType();
@@ -162,7 +163,7 @@ class CodeGenerator {
    * @tparam ReturnType The function's return type.
    * @tparam ArgumentTypes The types of any number of arguments to the function.
    * @return A pointer to the complete function type-signature's equivalent as
-   *         an LLVM FunctionType in this CodeGenerator's context.
+   *         an LLVM FunctionType in this CodegenUtils's context.
    **/
   template <typename ReturnType, typename... ArgumentTypes>
   llvm::FunctionType* GetFunctionType();
@@ -179,7 +180,7 @@ class CodeGenerator {
    *
    * @param constant_value A C++ value to map to an LLVM constant.
    * @return A pointer to an llvm::Constant object with constant_value's value
-   *         in this CodeGenerator's context.
+   *         in this CodegenUtils's context.
    **/
   template <typename CppType>
   llvm::Constant* GetConstant(const CppType constant_value);
@@ -221,36 +222,29 @@ class CodeGenerator {
 
   /**
    * @brief Create an LLVM function in the module managed by this
-   *        CodeGenerator.
+   *        CodegenUtils.
    *
    * @note This method creates an empty Function object with no body. Caller
    *       can then create BasicBlocks inside the Function to implement its
    *       actual body.
    *
-   * @tparam ReturnType The function's return type.
-   * @tparam ArgumentTypes The types of any number of arguments to the
-   *         function.
+   * @tparam FuncType FunctionType. e.g ReturnType (*)(ArgumenTypes)
+   *
    * @param name The function's name.
    * @param linkage The linkage visibility of the function. Defaults to
    *        ExternalLinkage, which makes the function visible and callable from
    *        anywhere.
    * @return A pointer to a newly-created empty function in this
-   *         CodeGenerator's module (object is owned by this CodeGenerator).
+   *         CodegenUtils's module (object is owned by this CodegenUtils).
    **/
-  template <typename ReturnType, typename... ArgumentTypes>
+  template <typename FuncType>
   llvm::Function* CreateFunction(
       const llvm::Twine& name,
       const llvm::GlobalValue::LinkageTypes linkage
-          = llvm::GlobalValue::ExternalLinkage) {
-    return llvm::Function::Create(
-        GetFunctionType<ReturnType, ArgumentTypes...>(),
-        linkage,
-        name,
-        module_.get());
-  }
+          = llvm::GlobalValue::ExternalLinkage);
 
   /**
-   * @brief Create a new BasicBlock inside a Function in this CodeGenerator's
+   * @brief Create a new BasicBlock inside a Function in this CodegenUtils's
    *        module.
    *
    * @param name The name of the BasicBlock. This is not required to be unique,
@@ -294,9 +288,9 @@ class CodeGenerator {
    *         These do not need to be specified if external_function is not
    *         overloaded (they will be inferred automatically).
    * @param external_function A function pointer to install for use in this
-   *        CodeGenerator.
+   *        CodegenUtils.
    * @param name An optional name to refer to the external function by. If
-   *        non-empty, this CodeGenerator will record additional information
+   *        non-empty, this CodegenUtils will record additional information
    *        so that the registered function will also be callable by its name
    *        in C++ source code compiled by ClangCompiler (see
    *        ClangCompiler::GenerateExternalFunctionDeclarations()).
@@ -315,12 +309,12 @@ class CodeGenerator {
       RecordNamedExternalFunction<ReturnType, ArgumentTypes...>(name);
     }
 
-    return CreateFunction<ReturnType, ArgumentTypes...>(
+    return CreateFunctionImpl<ReturnType, ArgumentTypes...>(
         external_functions_.back().first);
   }
 
   /**
-   * @brief Optimize the code in the module managed by this CodeGenerator before
+   * @brief Optimize the code in the module managed by this CodegenUtils before
    *        execution.
    *
    * This method applies "generic" IR-to-IR optimization passes and is intended
@@ -349,7 +343,7 @@ class CodeGenerator {
                 const bool optimize_for_host_cpu);
 
   /**
-   * @brief Prepare code generated by this CodeGenerator for execution.
+   * @brief Prepare code generated by this CodegenUtils for execution.
    *
    * Internally, this creates an LLVM MCJIT ExecutionEngine and gives ownership
    * of the Module to it. Actual compilation of functions may be deferred until
@@ -372,7 +366,7 @@ class CodeGenerator {
 
   /**
    * @brief Get a pointer to the compiled machine-code version of a function
-   *        generated by this CodeGenerator.
+   *        generated by this CodegenUtils.
    *
    * @note PrepareForExecution() should be called before calling this method.
    *
@@ -383,20 +377,8 @@ class CodeGenerator {
    *         function_name, or NULL if the function is not found or couldn't
    *         be compiled.
    **/
-  template <typename ReturnType, typename... ArgumentTypes>
-  auto GetFunctionPointer(const std::string& function_name)
-      -> ReturnType (*)(ArgumentTypes...) {
-    if (engine_) {
-#ifdef GPCODEGEN_DEBUG
-      CheckFunctionType(function_name,
-                        GetFunctionType<ReturnType, ArgumentTypes...>());
-#endif
-      return reinterpret_cast<ReturnType (*)(ArgumentTypes...)>(
-          engine_->getFunctionAddress(function_name));
-    } else {
-      return nullptr;
-    }
-  }
+  template <typename FunctionType>
+  FunctionType GetFunctionPointer(const std::string& function_name);
 
  private:
   // Give ClangCompiler access to 'context_' add allow it to add compiled C++
@@ -404,7 +386,10 @@ class CodeGenerator {
   friend class ClangCompiler;
 
   template <typename, typename>
-  friend class code_generator_detail::ConstantMaker;
+  friend class codegen_utils_detail::ConstantMaker;
+
+  template <typename>
+  friend class codegen_utils_detail::FunctionTypeUnpacker;
 
   // Allow ClangCompilerTest to inspect 'auxiliary_modules_' to check if they
   // have debugging information attached.
@@ -420,6 +405,22 @@ class CodeGenerator {
 
   static constexpr char kExternalVariableNamePrefix[] = "_gpcodegenv";
   static constexpr char kExternalFunctionNamePrefix[] = "_gpcodegenx";
+
+  // Used internally when CreateFunction is called. Given the ReturnType
+  // and ArgumentTypes this will create an LLVM functions in the module
+  // managed by this CodegenUtils.
+  template <typename ReturnType, typename... ArgumentTypes>
+  llvm::Function* CreateFunctionImpl(
+      const llvm::Twine& name,
+      const llvm::GlobalValue::LinkageTypes linkage
+          = llvm::GlobalValue::ExternalLinkage);
+
+  // Used internall when GetFunctionPointer is called. Given the ReturnType
+  // and ArgumentTypes this will get a pointer to the compiled machine-code
+  // version of a function generated by this CodegenUtils.
+  template <typename ReturnType, typename... ArgumentTypes>
+  auto GetFunctionPointerImpl(const std::string& function_name)
+      -> ReturnType (*)(ArgumentTypes...);
 
   // Used internally when GetConstant() is called with a pointer type. Creates a
   // new GlobalVariable with external linkage in '*module_' and remembers its
@@ -471,7 +472,7 @@ class CodeGenerator {
   llvm::LLVMContext context_;
   llvm::IRBuilder<> ir_builder_;
 
-  // Primary module directly managed by this CodeGenerator.
+  // Primary module directly managed by this CodegenUtils.
   std::unique_ptr<llvm::Module> module_;
 
   // Additional modules to codegen from, generated by tools like ClangCompiler.
@@ -495,26 +496,27 @@ class CodeGenerator {
   std::vector<std::pair<const std::string, const std::uint64_t>>
       external_global_variables_;
 
-  // Counters for external variables/functions registered in this CodeGenerator.
+  // Counters for external variables/functions registered in this CodegenUtils.
   // Used by GenerateExternalVariableName() and GenerateExternalFunctionName(),
   // respectively, to generate unique names for functions/globals.
   unsigned external_variable_counter_;
   unsigned external_function_counter_;
 
-  DISALLOW_COPY_AND_ASSIGN(CodeGenerator);
+  DISALLOW_COPY_AND_ASSIGN(CodegenUtils);
 };
+
 
 /** @} */
 
 // ----------------------------------------------------------------------------
-// Implementation of CodeGenerator::GetType() and
-// CodeGenerator::GetAnnotatedType().
+// Implementation of CodegenUtils::GetType() and
+// CodegenUtils::GetAnnotatedType().
 
 // Because function template partial specialization is not allowed, we use
 // helper classes to implement GetType() and GetAnnotatedType(). They are
 // encapsulated in this nested namespace, which is not considered part of the
 // public API.
-namespace code_generator_detail {
+namespace codegen_utils_detail {
 
 // type_traits-style template that detects whether 'T' is bool, or a const
 // and/or volatile qualified version of bool.
@@ -708,28 +710,28 @@ class TypeMaker<ReferentType&> {
   }
 };
 
-}  // namespace code_generator_detail
+}  // namespace codegen_utils_detail
 
 template <typename CppType>
-llvm::Type* CodeGenerator::GetType() {
-  return code_generator_detail::TypeMaker<CppType>::Get(&context_);
+llvm::Type* CodegenUtils::GetType() {
+  return codegen_utils_detail::TypeMaker<CppType>::Get(&context_);
 }
 
 template <typename CppType>
-AnnotatedType CodeGenerator::GetAnnotatedType() {
-  return code_generator_detail::TypeMaker<CppType>::GetAnnotated(&context_);
+AnnotatedType CodegenUtils::GetAnnotatedType() {
+  return codegen_utils_detail::TypeMaker<CppType>::GetAnnotated(&context_);
 }
 
 // ----------------------------------------------------------------------------
-// Implementation of CodeGenerator::GetFunctionType().
+// Implementation of CodegenUtils::GetFunctionType().
 
 // Helper template classes are nested in this namespace and are not considered
 // part of the public API.
-namespace code_generator_detail {
+namespace codegen_utils_detail {
 
 // TypeVectorBuilder is a variadic template. Specializations of
 // TypeVectorBuilder have a two static methods AppendTypes() and
-// AppendAnnotatedTypes(). AppendTypes() takes a 'CodeGenerator*' pointer and a
+// AppendAnnotatedTypes(). AppendTypes() takes a 'CodegenUtils*' pointer and a
 // pointer to a vector of 'llvm::Type*' pointers.
 // Calling TypeVectorBuilder<ArgumentTypes...>::AppendTypes() appends the
 // equivalent llvm::Type for each of 'ArgumentTypes' to the vector. Similarly,
@@ -742,12 +744,12 @@ class TypeVectorBuilder;
 template <>
 class TypeVectorBuilder<> {
  public:
-  static void AppendTypes(CodeGenerator* generator,
+  static void AppendTypes(CodegenUtils* generator,
                           std::vector<llvm::Type*>* types) {
   }
 
   static void AppendAnnotatedTypes(
-      CodeGenerator* generator,
+      CodegenUtils* generator,
       std::vector<AnnotatedType>* annotated_types) {
   }
 };
@@ -759,16 +761,16 @@ class TypeVectorBuilder<HeadType, TailTypes...> {
  public:
   static_assert(!std::is_same<HeadType, void>::value,
                 "void is not allowed as an argument type for "
-                "gpcodegen::CodeGenerator::GetFunctionType()");
+                "gpcodegen::CodegenUtils::GetFunctionType()");
 
-  static void AppendTypes(CodeGenerator* generator,
+  static void AppendTypes(CodegenUtils* generator,
                           std::vector<llvm::Type*>* types) {
     types->push_back(generator->GetType<HeadType>());
     TypeVectorBuilder<TailTypes...>::AppendTypes(generator, types);
   }
 
   static void AppendAnnotatedTypes(
-      CodeGenerator* generator,
+      CodegenUtils* generator,
       std::vector<AnnotatedType>* annotated_types) {
     annotated_types->emplace_back(generator->GetAnnotatedType<HeadType>());
     TypeVectorBuilder<TailTypes...>::AppendAnnotatedTypes(generator,
@@ -776,29 +778,29 @@ class TypeVectorBuilder<HeadType, TailTypes...> {
   }
 };
 
-}  // namespace code_generator_detail
+}  // namespace codegen_utils_detail
 
 template <typename ReturnType, typename... ArgumentTypes>
-llvm::FunctionType* CodeGenerator::GetFunctionType() {
+llvm::FunctionType* CodegenUtils::GetFunctionType() {
   std::vector<llvm::Type*> argument_types;
-  code_generator_detail::TypeVectorBuilder<ArgumentTypes...>::AppendTypes(
+  codegen_utils_detail::TypeVectorBuilder<ArgumentTypes...>::AppendTypes(
       this,
       &argument_types);
   return llvm::FunctionType::get(GetType<ReturnType>(), argument_types, false);
 }
 
 // ----------------------------------------------------------------------------
-// Implementation of CodeGenerator::GetConstant().
+// Implementation of CodegenUtils::GetConstant().
 
 // Helper template classes are nested in this namespace and are not considered
 // part of the public API.
-namespace code_generator_detail {
+namespace codegen_utils_detail {
 
 // ConstantMaker has various template specializations to handle constants of
 // different C++ types. The specialized versions have a static method Get()
 // that takes a 'constant_value' of type 'const CppType' and a pointer to
-// a CodeGenerator object, and returns a pointer to an llvm::Constant
-// equivalent to 'constant_value' in the CodeGenerator's context.
+// a CodegenUtils object, and returns a pointer to an llvm::Constant
+// equivalent to 'constant_value' in the CodegenUtils's context.
 template <typename CppType, typename Enable = void>
 class ConstantMaker {
 };
@@ -815,7 +817,7 @@ class ConstantMaker<
                 "Unable to make an integer constant wider than 64 bits.");
 
   static llvm::Constant* Get(const UnsignedIntType constant_value,
-                             CodeGenerator* generator) {
+                             CodegenUtils* generator) {
     return llvm::ConstantInt::get(generator->GetType<UnsignedIntType>(),
                                   constant_value);
   }
@@ -833,7 +835,7 @@ class ConstantMaker<
                 "Unable to make an integer constant wider than 64 bits.");
 
   static llvm::Constant* Get(const SignedIntType constant_value,
-                             CodeGenerator* generator) {
+                             CodegenUtils* generator) {
     return llvm::ConstantInt::getSigned(generator->GetType<SignedIntType>(),
                                         constant_value);
   }
@@ -846,7 +848,7 @@ class ConstantMaker<
     typename std::enable_if<std::is_enum<EnumType>::value>::type> {
  public:
   static llvm::Constant* Get(const EnumType constant_value,
-                             CodeGenerator* generator) {
+                             CodegenUtils* generator) {
     typedef typename std::underlying_type<EnumType>::type EnumAsIntType;
     return ConstantMaker<EnumAsIntType>::Get(
         static_cast<EnumAsIntType>(constant_value),
@@ -859,7 +861,7 @@ template <>
 class ConstantMaker<float> {
  public:
   static llvm::Constant* Get(const float constant_value,
-                             CodeGenerator* generator) {
+                             CodegenUtils* generator) {
     return llvm::ConstantFP::get(generator->GetType<float>(),
                                  constant_value);
   }
@@ -870,7 +872,7 @@ template <>
 class ConstantMaker<double> {
  public:
   static llvm::Constant* Get(const double constant_value,
-                             CodeGenerator* generator) {
+                             CodegenUtils* generator) {
     return llvm::ConstantFP::get(generator->GetType<double>(),
                                  constant_value);
   }
@@ -881,7 +883,7 @@ template <typename PointedType>
 class ConstantMaker<PointedType*> {
  public:
   static llvm::Constant* Get(const PointedType* constant_value,
-                             CodeGenerator* generator) {
+                             CodegenUtils* generator) {
     if (constant_value == nullptr) {
       return llvm::ConstantPointerNull::get(
           static_cast<llvm::PointerType*>(generator->GetType<PointedType*>()));
@@ -895,22 +897,22 @@ class ConstantMaker<PointedType*> {
   }
 };
 
-}  // namespace code_generator_detail
+}  // namespace codegen_utils_detail
 
 template <typename CppType>
-llvm::Constant* CodeGenerator::GetConstant(const CppType constant_value) {
-  return code_generator_detail::ConstantMaker<CppType>::Get(constant_value,
+llvm::Constant* CodegenUtils::GetConstant(const CppType constant_value) {
+  return codegen_utils_detail::ConstantMaker<CppType>::Get(constant_value,
                                                             this);
 }
 
 // ----------------------------------------------------------------------------
 // Implementation of recursive variadic version of
-// CodeGenerator::GetPointerToMemberImpl().
+// CodegenUtils::GetPointerToMemberImpl().
 
 template <typename StructType,
           typename MemberType,
           typename... TailPointerToMemberTypes>
-llvm::Value* CodeGenerator::GetPointerToMemberImpl(
+llvm::Value* CodegenUtils::GetPointerToMemberImpl(
     llvm::Value* base_ptr,
     llvm::Type* cast_type,
     const std::size_t cumulative_offset,
@@ -940,21 +942,105 @@ llvm::Value* CodeGenerator::GetPointerToMemberImpl(
 }
 
 // ----------------------------------------------------------------------------
-// Implementation of CodeGenerator::RecordNamedExternalFunction()
+// Implementation of CodegenUtils::RecordNamedExternalFunction()
 
 template <typename ReturnType, typename... ArgumentTypes>
-void CodeGenerator::RecordNamedExternalFunction(const std::string& name) {
+void CodegenUtils::RecordNamedExternalFunction(const std::string& name) {
   NamedExternalFunction named_external_fn{name,
                                           GetAnnotatedType<ReturnType>(),
                                           {}};
-  code_generator_detail::TypeVectorBuilder<ArgumentTypes...>
+  codegen_utils_detail::TypeVectorBuilder<ArgumentTypes...>
       ::AppendAnnotatedTypes(this,
                              &named_external_fn.argument_types);
 
   named_external_functions_.emplace_back(std::move(named_external_fn));
 }
 
+
+// ----------------------------------------------------------------------------
+// Implementation of CodegenUtils::GetTypeDefFunctionPointer &
+// CodegenUtils::CreateFunctionPointer().
+
+namespace codegen_utils_detail {
+/**
+ * @brief Templated helper class that provides a static method which
+ *        unpack the return type, argument types and call the respective
+ *        method
+ *
+ * @tparam FunctionType Function type.
+ * @tparam MethodPtr A pointer-to-method.
+ **/
+template <typename FunctionType>
+class FunctionTypeUnpacker;
+
+// Partial specialization of FunctionTypeUnpacker.
+// This class will unpack the function type to ReturnType and ArgumentTypes.
+// GetFunctionPointerImpl - Call CodegenUtils's GetFunctionPointerImpl
+// CreateFunctionImpl - Call CodegenUtils's CreateFunctionImpl.
+template<typename ReturnType, typename... ArgumentTypes>
+class FunctionTypeUnpacker<ReturnType(*)(ArgumentTypes...)> {
+ public:
+  using R = ReturnType;
+
+  static llvm::Function* CreateFunctionImpl(
+      CodegenUtils* codegen_utils,
+      const llvm::Twine& name,
+      const llvm::GlobalValue::LinkageTypes linkage) {
+    return codegen_utils->CreateFunctionImpl<ReturnType, ArgumentTypes...>(
+        name, linkage);
+  }
+
+  static auto GetFunctionPointerImpl(gpcodegen::CodegenUtils* codegen_utils,
+                                       const std::string& func_name)
+    -> ReturnType (*)(ArgumentTypes...) {
+    return codegen_utils->GetFunctionPointerImpl<ReturnType, ArgumentTypes...>(
+        func_name);
+  }
+};
+}  // namespace codegen_utils_detail
+
+template <typename FunctionType>
+llvm::Function* CodegenUtils::CreateFunction(
+    const llvm::Twine& name,
+    const llvm::GlobalValue::LinkageTypes linkage) {
+  return codegen_utils_detail::FunctionTypeUnpacker<FunctionType>::
+      CreateFunctionImpl(this, name, linkage);
+}
+
+template <typename ReturnType, typename... ArgumentTypes>
+llvm::Function* CodegenUtils::CreateFunctionImpl(
+    const llvm::Twine& name,
+    const llvm::GlobalValue::LinkageTypes linkage) {
+  return llvm::Function::Create(
+      GetFunctionType<ReturnType, ArgumentTypes...>(),
+      linkage,
+      name,
+      module_.get());
+}
+
+template <typename FunctionType>
+FunctionType CodegenUtils::GetFunctionPointer(
+    const std::string& function_name) {
+  return codegen_utils_detail::FunctionTypeUnpacker<FunctionType>::
+      GetFunctionPointerImpl(this, function_name);
+}
+
+template <typename ReturnType, typename... ArgumentTypes>
+auto CodegenUtils::GetFunctionPointerImpl(const std::string& function_name)
+    -> ReturnType (*)(ArgumentTypes...) {
+  if (engine_) {
+#ifdef GPCODEGEN_DEBUG
+    CheckFunctionType(function_name,
+                      GetFunctionType<ReturnType, ArgumentTypes...>());
+#endif
+    return reinterpret_cast<ReturnType (*)(ArgumentTypes...)>(
+        engine_->getFunctionAddress(function_name));
+  } else {
+    return nullptr;
+  }
+}
+
 }  // namespace gpcodegen
 
-#endif  // GPCODEGEN_CODE_GENERATOR_H_
+#endif  // GPCODEGEN_CODEGEN_UTILS_H_
 // EOF
