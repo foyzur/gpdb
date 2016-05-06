@@ -227,7 +227,7 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	int origSliceIdInPlan = estate->currentSliceIdInPlan;
 	int origExecutingSliceId = estate->currentExecutingSliceId;
 
-	MemoryAccount* curMemoryAccount = NULL;
+	MemoryAccountIdType curMemoryAccount = MEMORY_OWNER_TYPE_Undefined;
 
 	StringInfo codegenManagerName = makeStringInfo();
 	appendStringInfo(codegenManagerName, "%s-%d-%d", "execProcnode", node->plan_node_id, node->type);
@@ -924,7 +924,7 @@ ExecProcNode(PlanState *node)
 
 	START_CODE_GENERATOR_MANAGER(node->CodegenManager);
 	{
-	START_MEMORY_ACCOUNT(node->memoryAccount);
+	START_MEMORY_ACCOUNT(node->plan->memoryAccountId);
 	{
 
 	CHECK_FOR_INTERRUPTS();
@@ -1148,10 +1148,10 @@ ExecProcNode(PlanState *node)
 			if (subplanAtTopNestLevel)
 			{
 				ExecSquelchNode(subplanState->planstate);
-				ExecEagerFreeChildNodes(subplanState->planstate, subplanAtTopNestLevel);
-				ExecEagerFree(subplanState->planstate);
-			}
+			ExecEagerFreeChildNodes(subplanState->planstate, subplanAtTopNestLevel);
+			ExecEagerFree(subplanState->planstate);
 		}
+	}
 	}
 
 	}
@@ -1184,7 +1184,7 @@ MultiExecProcNode(PlanState *node)
 
 	Assert(NULL != node->plan);
 
-	START_MEMORY_ACCOUNT(node->memoryAccount);
+	START_MEMORY_ACCOUNT(node->plan->memoryAccountId);
 	{
 		PG_TRACE5(execprocnode__enter, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
 

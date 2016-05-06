@@ -71,6 +71,10 @@
 #include "utils/gp_alloc.h"
 
 #include "miscadmin.h"
+#include "utils/dynahash.h"
+#include "utils/hsearch.h"
+
+#include "utils/memaccounting_private.h"
 
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
@@ -195,7 +199,6 @@ static bool AllocSetIsEmpty(MemoryContext context);
 static void AllocSet_GetStats(MemoryContext context, uint64 *nBlocks, uint64 *nChunks,
 		uint64 *currentAvailable, uint64 *allAllocated, uint64 *allFreed, uint64 *maxHeld);
 static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context);
-static void AllocSetUpdateGenerationForAllAllocatedChunks(MemoryContext context);
 
 static void dump_allocset_block(FILE *file, AllocBlock block);
 static void dump_allocset_blocks(FILE *file, AllocBlock blocks);
@@ -221,8 +224,7 @@ static MemoryContextMethods AllocSetMethods = {
 	AllocSetGetChunkSpace,
 	AllocSetIsEmpty,
 	AllocSet_GetStats,
-	AllocSetReleaseAccountingForAllAllocatedChunks,
-	AllocSetUpdateGenerationForAllAllocatedChunks
+	AllocSetReleaseAccountingForAllAllocatedChunks
 #ifdef MEMORY_CONTEXT_CHECKING
 	,AllocSetCheck
 #endif
@@ -324,8 +326,6 @@ void dump_tmc(const char *fname)
  * Debug macros
  * ----------
  */
-#ifdef CDB_PALLOC_TAGS
-
 void dump_memory_allocation(const char* fname)
 {
 	FILE *ofile = fopen(fname, "w+");
@@ -356,100 +356,12 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 		next = (AllocSet) next->header.nextchild;
 	}
 }
-#endif
 
 inline void
 AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader) __attribute__((always_inline));
 
 inline void
 AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader) __attribute__((always_inline));
-
-inline bool
-MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount,
-		Size allocatedSize) __attribute__((always_inline));
-
-inline bool
-MemoryAccounting_Free(struct MemoryAccount* memoryAccount, uint16 memoryAccountGeneration,
-		Size allocatedSize) __attribute__((always_inline));
-
-/*
- * MemoryAccounting_Allocate
- *	 	When an allocation is made, this function will be called by the
- *	 	underlying allocator to record allocation request.
- *
- * memoryAccount: where to record this allocation
- * allocatedSize: the final amount of memory returned by the allocator (with overhead)
- *
- * If the return value is false, the underlying memory allocator should fail.
- */
-bool
-MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount, Size allocatedSize)
-{
-	Assert(memoryAccount->allocated + allocatedSize >=
-			memoryAccount->allocated);
-
-	memoryAccount->allocated += allocatedSize;
-
-	Size held = memoryAccount->allocated -
-			memoryAccount->freed;
-
-	memoryAccount->peak =
-			Max(memoryAccount->peak, held);
-
-	Assert(memoryAccount->allocated >=
-			memoryAccount->freed);
-
-	MemoryAccountingOutstandingBalance += allocatedSize;
-	MemoryAccountingPeakBalance = Max(MemoryAccountingPeakBalance, MemoryAccountingOutstandingBalance);
-
-	return true;
-}
-
-/*
- * MemoryAccounting_Free
- *		"One" implementation of free request handler. Each memory account
- *		can customize its free request function. When memory is deallocated,
- *		this function will be called by the underlying allocator to record deallocation.
- *		This function records the amount of memory freed.
- *
- * memoryAccount: where to record this allocation
- * allocatedSize: the final amount of memory returned by the allocator (with overhead)
- *
- * Note: the memoryAccount can be an invalid pointer if the generation of
- * the allocation is different than the current generation. In such case
- * this method would automatically select RolloverMemoryAccount, instead
- * of accessing an invalid pointer.
- */
-bool
-MemoryAccounting_Free(MemoryAccount* memoryAccount, uint16 memoryAccountGeneration, Size allocatedSize)
-{
-	if (memoryAccountGeneration != MemoryAccountingCurrentGeneration)
-	{
-		memoryAccount = RolloverMemoryAccount;
-	}
-
-	Assert(MemoryAccountIsValid(memoryAccount));
-
-	/*
-	 * SharedChunkHeadersMemoryAccount is generation independent, as it is a long
-	 * living account.
-	 */
-	Assert(memoryAccount != SharedChunkHeadersMemoryAccount ||
-			memoryAccountGeneration == MemoryAccountingCurrentGeneration);
-
-	Assert(memoryAccount->freed +
-			allocatedSize >= memoryAccount->freed);
-
-	Assert(memoryAccount->allocated >= memoryAccount->freed);
-
-	memoryAccount->freed += allocatedSize;
-
-	MemoryAccountingOutstandingBalance -= allocatedSize;
-
-	Assert(MemoryAccountingOutstandingBalance >= 0);
-
-	return true;
-}
 
 /*
  * AllocFreeInfo
@@ -481,10 +393,9 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 * memory accounting is setup will get NULL memoryAccount.
 		 * Chunks without memory account do not need any accounting adjustment.
 		 */
-		if (chunk->sharedHeader->memoryAccount != NULL)
+		if (chunk->sharedHeader->memoryAccountId != MEMORY_OWNER_TYPE_Undefined)
 		{
-			MemoryAccounting_Free(chunk->sharedHeader->memoryAccount,
-				chunk->sharedHeader->memoryAccountGeneration, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Free(chunk->sharedHeader->memoryAccountId, chunk->size + ALLOC_CHUNKHDRSZ);
 
 			if (chunk->sharedHeader->balance == 0)
 			{
@@ -535,8 +446,7 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 * charged against SharedChunkMemoryAccount, and that result in a
 		 * negative balance for SharedChunkMemoryAccount.
 		 */
-		MemoryAccounting_Free(SharedChunkHeadersMemoryAccount,
-			MemoryAccountingCurrentGeneration, chunk->size + ALLOC_CHUNKHDRSZ);
+		MemoryAccounting_Free(MEMORY_OWNER_TYPE_SharedChunkHeader, chunk->size + ALLOC_CHUNKHDRSZ);
 	}
 
 #ifdef CDB_PALLOC_TAGS
@@ -581,28 +491,23 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 * or MemoryAccountMemoryContext gets allocated even before we start assigning
 		 * accounts to any chunks.
 		 */
-		if (ActiveMemoryAccount != NULL)
+		if (ActiveMemoryAccountId != MEMORY_OWNER_TYPE_Undefined)
 		{
-			Assert(MemoryAccountIsValid(ActiveMemoryAccount));
-
 			SharedChunkHeader *desiredHeader = set->sharedHeaderList;
 
 			/* Try to look-ahead in the sharedHeaderList to find the desiredHeader */
-			if (set->sharedHeaderList != NULL && set->sharedHeaderList->memoryAccount == ActiveMemoryAccount &&
-					set->sharedHeaderList->memoryAccountGeneration == MemoryAccountingCurrentGeneration)
+			if (set->sharedHeaderList != NULL && set->sharedHeaderList->memoryAccountId == ActiveMemoryAccountId)
 			{
 				/* Do nothing, we already assigned sharedHeaderList to desiredHeader */
 			}
 			else if (set->sharedHeaderList != NULL && set->sharedHeaderList->next != NULL &&
-					set->sharedHeaderList->next->memoryAccount == ActiveMemoryAccount &&
-					set->sharedHeaderList->next->memoryAccountGeneration == MemoryAccountingCurrentGeneration)
+					set->sharedHeaderList->next->memoryAccountId == ActiveMemoryAccountId)
 			{
 				desiredHeader = set->sharedHeaderList->next;
 			}
 			else if (set->sharedHeaderList != NULL && set->sharedHeaderList->next != NULL &&
 					set->sharedHeaderList->next->next != NULL &&
-					set->sharedHeaderList->next->next->memoryAccount == ActiveMemoryAccount &&
-					set->sharedHeaderList->next->next->memoryAccountGeneration == MemoryAccountingCurrentGeneration)
+					set->sharedHeaderList->next->next->memoryAccountId == ActiveMemoryAccountId)
 			{
 				desiredHeader = set->sharedHeaderList->next->next;
 			}
@@ -613,8 +518,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 				desiredHeader = AllocSetAllocHeader((MemoryContext) set, sizeof(SharedChunkHeader));
 
 				desiredHeader->context = (MemoryContext) set;
-				desiredHeader->memoryAccount = ActiveMemoryAccount;
-				desiredHeader->memoryAccountGeneration = MemoryAccountingCurrentGeneration;
+				desiredHeader->memoryAccountId = ActiveMemoryAccountId;
 				desiredHeader->balance = 0;
 
 				desiredHeader->next = set->sharedHeaderList;
@@ -630,7 +534,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 			desiredHeader->balance += (chunk->size + ALLOC_CHUNKHDRSZ);
 			chunk->sharedHeader = desiredHeader;
 
-			MemoryAccounting_Allocate(ActiveMemoryAccount, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(ActiveMemoryAccountId, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 		else
 		{
@@ -642,13 +546,12 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 				 * SharedChunkHeadersMemoryAccount comes to life first. So, if
 				 * ActiveMemoryAccount is NULL, so should be the SharedChunkHeadersMemoryAccount
 				 */
-				Assert(ActiveMemoryAccount == NULL && SharedChunkHeadersMemoryAccount == NULL);
+				Assert(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Undefined);
 
 				/* We initialize nullAccountHeader only if necessary */
 				SharedChunkHeader *desiredHeader = AllocSetAllocHeader((MemoryContext) set, sizeof(SharedChunkHeader));
 				desiredHeader->context = (MemoryContext) set;
-				desiredHeader->memoryAccount = NULL;
-				desiredHeader->memoryAccountGeneration = MemoryAccountingCurrentGeneration;
+				desiredHeader->memoryAccountId = MEMORY_OWNER_TYPE_Undefined;
 				desiredHeader->balance = 0;
 
 				set->nullAccountHeader = desiredHeader;
@@ -674,7 +577,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 */
 		if (SharedChunkHeadersMemoryAccount != NULL)
 		{
-			MemoryAccounting_Allocate(SharedChunkHeadersMemoryAccount, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(MEMORY_OWNER_TYPE_SharedChunkHeader, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 
 		/*
@@ -919,8 +822,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 			curHeader = curHeader->next)
 	{
 		Assert(curHeader->balance > 0);
-		MemoryAccounting_Free(curHeader->memoryAccount,
-				curHeader->memoryAccountGeneration, curHeader->balance);
+		MemoryAccounting_Free(curHeader->memoryAccountId, curHeader->balance);
 
 		AllocChunk chunk = AllocPointerGetChunk(curHeader);
 
@@ -931,8 +833,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 	 * In addition to releasing accounting for the chunks, we also need
 	 * to release accounting for the shared headers
 	 */
-	MemoryAccounting_Free(SharedChunkHeadersMemoryAccount,
-		MemoryAccountingCurrentGeneration, sharedHeaderMemoryOverhead);
+	MemoryAccounting_Free(MEMORY_OWNER_TYPE_SharedChunkHeader, sharedHeaderMemoryOverhead);
 
 	/*
 	 * Wipe off the sharedHeaderList. We don't free any memory here,
@@ -943,26 +844,6 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 #ifdef CDB_PALLOC_TAGS
 	set->allocList = NULL;
 #endif
-}
-
-/*
- * AllocSetUpdateGenerationForAllAllocatedChunks
- * 		Iterates through all the shared headers and updates their memory accounting
- * 		generation. During this process, all the headers' accounts are set to RolloverMemoryAccount.
- *
- * Parameters:
- * 		context: The context for which to update the generation
- */
-static void AllocSetUpdateGenerationForAllAllocatedChunks(MemoryContext context)
-{
-	AllocSet set = (AllocSet) context;
-
-	for (SharedChunkHeader* curHeader = set->sharedHeaderList; curHeader != NULL;
-			curHeader = curHeader->next)
-	{
-		curHeader->memoryAccount = RolloverMemoryAccount;
-		curHeader->memoryAccountGeneration = MemoryAccountingCurrentGeneration;
-	}
 }
 
 /*
