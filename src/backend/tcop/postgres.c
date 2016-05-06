@@ -96,6 +96,7 @@
 #include "cdb/cdbfilerep.h"
 #include "postmaster/primary_mirror_mode.h"
 #include "utils/vmem_tracker.h"
+#include "inttypes.h"
 
 extern int	optind;
 extern char *optarg;

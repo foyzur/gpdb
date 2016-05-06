@@ -54,9 +54,7 @@
 #define CDB_PALLOC_CALLER_ID
 */
 
-#ifdef USE_ASSERT_CHECKING
 #define CDB_PALLOC_TAGS
-#endif
 
 /* CDB_PALLOC_TAGS implies CDB_PALLOC_CALLER_ID */
 #if defined(CDB_PALLOC_TAGS) && !defined(CDB_PALLOC_CALLER_ID)
