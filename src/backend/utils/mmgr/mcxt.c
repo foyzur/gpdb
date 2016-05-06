@@ -73,6 +73,7 @@ MemoryContext MessageContext = NULL;
 MemoryContext TopTransactionContext = NULL;
 MemoryContext CurTransactionContext = NULL;
 MemoryContext MemoryAccountMemoryContext = NULL;
+MemoryContext MemoryAccountDebugContext = NULL;
 
 /* This is a transient link to the active portal's memory context: */
 MemoryContext PortalContext = NULL;

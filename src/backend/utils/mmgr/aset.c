@@ -71,6 +71,8 @@
 #include "utils/gp_alloc.h"
 
 #include "miscadmin.h"
+#include "utils/dynahash.h"
+#include "utils/hsearch.h"
 
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
@@ -354,6 +356,53 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 		next = (AllocSet) next->header.nextchild;
 	}
 }
+
+void MemoryContext_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
+{
+	// hack to ignore all the allocations done by logging code, such as dynahash to compute agg per allocation site
+	if (ctxt == MemoryAccountDebugContext)
+	{
+//		elog(WARNING, "Skipping MemoryAccountDebugContext");
+		return;
+	}
+
+	AllocSet set = (AllocSet) ctxt;
+	AllocSet next;
+	AllocChunk chunk = set->allocList;
+
+	char hashKey[ALLOC_SITE_KEY_SIZE];
+	while(chunk)
+	{
+		memset(hashKey, 0, ALLOC_SITE_KEY_SIZE);
+		snprintf(hashKey, ALLOC_SITE_KEY_SIZE, "%s:%d", chunk->alloc_tag, chunk->alloc_n);
+
+		bool found = false;
+		AllocSiteInfo *hentry = (AllocSiteInfo *) hash_search(htab, hashKey,
+												   HASH_ENTER, &found);
+
+		if (!found)
+		{
+			hentry->file_name = chunk->alloc_tag;
+			hentry->line_no = chunk->alloc_n;
+			hentry->alloc_count = 0;
+			hentry->alloc_size = 0;
+		}
+
+		hentry->alloc_count += 1;
+		hentry->alloc_size += chunk->size;
+
+        //fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
+		chunk = chunk->next_chunk;
+	}
+
+	next = (AllocSet) set->header.firstchild;
+	while(next)
+	{
+		MemoryContext_GetAllocationSiteForLeaks(htab, next);
+		next = (AllocSet) next->header.nextchild;
+	}
+}
+
 
 inline void
 AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader) __attribute__((always_inline));

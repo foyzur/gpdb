@@ -115,10 +115,16 @@ MemoryAccountDetectLeak(MemoryAccount *memoryAccount, void *context, uint32 dept
 		uint32 parentWalkSerial, uint32 curWalkSerial);
 
 size_t*
-MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size);
+MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size, HTAB **htab_out);
 
 static const char*
 MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType);
+
+static void
+MemoryAccounting_PrintLeakSites(HTAB *htab);
+
+void
+MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary);
 
 /*****************************************************************************
  * Global memory accounting variables
@@ -206,7 +212,8 @@ MemoryAccounting_Reset()
 	{
 		size_t last_rollover_balance = MemoryAccounting_GetBalance(RolloverMemoryAccount);
 		size_t leak_summary_size = 0;
-		size_t *leak_summary = MemoryAccounting_LeakSummary(MemoryAccountTreeLogicalRoot, &leak_summary_size);
+		HTAB *htab = NULL;
+		size_t *leak_summary = MemoryAccounting_LeakSummary(MemoryAccountTreeLogicalRoot, &leak_summary_size, &htab);
 
 		/* No one should create child context under MemoryAccountMemoryContext */
 		Assert(MemoryAccountMemoryContext->firstchild == NULL);
@@ -229,20 +236,89 @@ MemoryAccounting_Reset()
 		{
 			elog(WARNING, "Generation: %u, Leak: %" PRIu64 ", Rollover: %" PRIu64 ", Last: %" PRIu64, MemoryAccountingCurrentGeneration, rollover_balance - last_rollover_balance, rollover_balance, last_rollover_balance);
 			//MemoryAccounting_PrettyPrint();
-			for (int i = 0 ; i < MEMORY_OWNER_TYPE_Exec_Plan_End; i++)
-			{
-				if (i != MEMORY_OWNER_TYPE_SharedChunkHeader && i != MEMORY_OWNER_TYPE_Rollover && i != MEMORY_OWNER_TYPE_MemAccount && leak_summary[i] > 0)
-				{
-					elog(WARNING, "%s: %" PRIu64 "\n", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
-				}
-			}
+			MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(leak_summary);
+			MemoryAccounting_PrintLeakSites(htab);
 		}
 
+		hash_destroy(htab);
 		gp_free2(leak_summary, leak_summary_size);
 
 	}
 
 	InitMemoryAccounting();
+}
+
+void
+MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary)
+{
+	StringInfoData memBuf;
+	initStringInfo(&memBuf);
+
+
+	for (int i = 0 ; i < MEMORY_OWNER_TYPE_Exec_Plan_End; i++)
+	{
+		if (i != MEMORY_OWNER_TYPE_SharedChunkHeader && i != MEMORY_OWNER_TYPE_Rollover && i != MEMORY_OWNER_TYPE_MemAccount && leak_summary[i] > 0)
+		{
+			//elog(WARNING, "%s: %" PRIu64 "\n", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
+		    appendStringInfo(&memBuf, "%s: %" PRIu64 " | ", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
+		}
+	}
+
+	elog(WARNING, "%s\n", memBuf.data);
+
+	pfree(memBuf.data);
+}
+
+static void
+MemoryAccounting_PrintLeakSites(HTAB *htab)
+{
+	HASH_SEQ_STATUS status;
+	HTAB *hashp;
+	hash_seq_init(&status, htab);
+
+	long num_entries = hash_get_num_entries(htab);
+	AllocSiteInfo **sorted = MemoryContextAllocZero(MemoryAccountMemoryContext, sizeof(AllocSiteInfo *) * num_entries);
+
+	int hash_idx = 0;
+
+	AllocSiteInfo *info = hash_seq_search(&status);
+
+	while (NULL != info)
+	{
+		//elog(WARNING, "%s:%ld => %ld, %ld", info->file_name, info->line_no, info->alloc_count, info->alloc_size);
+		sorted[hash_idx++] = info;
+		info = hash_seq_search(&status);
+	}
+
+	for (int i = 0; i < num_entries; i++)
+	{
+		for (int j = i; j < num_entries; j++){
+			if (sorted[i]->alloc_size < sorted[j]->alloc_size)
+			{
+				AllocSiteInfo *tempInfo = sorted[i];
+				sorted[i] = sorted[j];
+				sorted[j] = tempInfo;
+			}
+		}
+	}
+
+
+	StringInfoData memBuf;
+	initStringInfo(&memBuf);
+
+	for (int i = 0; i < 3; i++)
+	{
+		//elog(WARNING, "%s:%ld => %ld, %ld", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_count, sorted[i]->alloc_size);
+	    appendStringInfo(&memBuf, "%s:%ld => %ld, %ld | ", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_count, sorted[i]->alloc_size);
+	}
+
+	elog(WARNING, "%s\n", memBuf.data);
+
+	pfree(memBuf.data);
+
+	pfree(sorted);
+
+	//hash_seq_term(&status);
 }
 
 /*
@@ -570,18 +646,8 @@ MemoryAccounting_ToString(MemoryAccount *root, StringInfoData *str, uint32 inden
 	MemoryAccountWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
 }
 
-#define ALLOC_SITE_KEY_SIZE 255
-
-typedef struct
-{
-	char* file_name;
-	int line_no;
-	int64 alloc_count;
-	int64 alloc_size;
-} AllocSiteInfo;
-
 size_t*
-MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size)
+MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size, HTAB **htab_out)
 {
 	size_t alloc_size = sizeof(size_t) * MEMORY_OWNER_TYPE_Exec_Plan_End;
 	size_t *leak_summary = gp_malloc(alloc_size);
@@ -594,54 +660,16 @@ MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size)
 	HASHCTL		ctl;
 	ctl.keysize = ALLOC_SITE_KEY_SIZE;
 	ctl.entrysize = sizeof(AllocSiteInfo);
+	ctl.hcxt = MemoryAccountDebugContext;
 
-	HTAB *htab = hash_create("Alloc Info Hash", 1000, &ctl, HASH_ELEM);
+	HTAB *htab = hash_create("Alloc Info Hash", 1000, &ctl, HASH_ELEM | HASH_CONTEXT);
 
-	MemoryAccounting_GetAllocationSiteForLeaks(htab, TopMemoryContext);
+	MemoryContext_GetAllocationSiteForLeaks(htab, TopMemoryContext);
 
 	*ret_alloc_size = alloc_size;
+	*htab_out = htab;
 	return leak_summary;
 }
-
-void MemoryAccounting_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
-{
-	AllocSet set = (AllocSet) ctxt;
-	AllocSet next;
-	AllocChunk chunk = set->allocList;
-
-	char hashKey[ALLOC_SITE_KEY_SIZE];
-	while(chunk)
-	{
-		memset(hashKey, 0, ALLOC_SITE_KEY_SIZE);
-		sprintf(hashKey, ALLOC_SITE_KEY_SIZE, "%s:%d", chunk->alloc_tag, chunk->alloc_n);
-
-		bool found = false;
-		AllocSiteInfo *hentry = (AllocSiteInfo *) hash_search(htab, hashKey,
-												   HASH_ENTER, &found);
-
-		if (!found)
-		{
-			hentry->file_name = chunk->alloc_tag;
-			hentry->line_no = chunk->alloc_n;
-			hentry->alloc_count = 0;
-			hentry->alloc_size = 0;
-		}
-
-		hentry->alloc_count += 1;
-		hentry->alloc_size += chunk->size;
-
-        //fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
-		chunk = chunk->next_chunk;
-	}
-
-	next = (AllocSet) set->header.firstchild;
-	while(next)
-	{
-		dump_memory_allocation_ctxt(ofile, next);
-		next = (AllocSet) next->header.nextchild;
-	}
-}
-
 
 /*
  * MemoryAccounting_ToCSV
@@ -1193,6 +1221,12 @@ InitMemoryAccounting()
 											 ALLOCSET_DEFAULT_INITSIZE,
 											 ALLOCSET_DEFAULT_MAXSIZE);
 
+		MemoryAccountDebugContext = AllocSetContextCreate(TopMemoryContext,
+											 "MemoryAccountDebugContext",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+
 		/*
 		 * Temporarily active MemoryAccountMemoryAccount. Once
 		 * all the setup is done, TopMemoryAccount will become
@@ -1232,6 +1266,8 @@ InitMemoryAccounting()
 	 	SharedChunkHeadersMemoryAccount->nextSibling = NULL;
 	 	RolloverMemoryAccount->firstChild = NULL;
 	 	SharedChunkHeadersMemoryAccount->firstChild = NULL;
+
+	 	MemoryContextReset(MemoryAccountDebugContext);
 	}
 
 	TopMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Top);
