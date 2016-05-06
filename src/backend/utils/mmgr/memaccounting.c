@@ -110,6 +110,16 @@ MemoryAccountToLog(MemoryAccount *memoryAccount, void *context,
 static void
 SaveMemoryBufToDisk(struct StringInfoData *memoryBuf, char *prefix);
 
+static CdbVisitOpt
+MemoryAccountDetectLeak(MemoryAccount *memoryAccount, void *context, uint32 depth,
+		uint32 parentWalkSerial, uint32 curWalkSerial);
+
+size_t*
+MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size);
+
+static const char*
+MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType);
+
 /*****************************************************************************
  * Global memory accounting variables
  */
@@ -194,6 +204,10 @@ MemoryAccounting_Reset()
 	 */
 	if (MemoryAccountTreeLogicalRoot)
 	{
+		size_t last_rollover_balance = MemoryAccounting_GetBalance(RolloverMemoryAccount);
+		size_t leak_summary_size = 0;
+		size_t *leak_summary = MemoryAccounting_LeakSummary(MemoryAccountTreeLogicalRoot, &leak_summary_size);
+
 		/* No one should create child context under MemoryAccountMemoryContext */
 		Assert(MemoryAccountMemoryContext->firstchild == NULL);
 
@@ -208,6 +222,24 @@ MemoryAccounting_Reset()
 				(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed) ==
 				MemoryAccountingOutstandingBalance);
 		MemoryAccounting_ResetPeakBalance();
+
+		size_t rollover_balance = MemoryAccounting_GetBalance(RolloverMemoryAccount);
+
+		if (memory_profiler_dataset_size == 10 && last_rollover_balance > 0 && rollover_balance > last_rollover_balance)
+		{
+			elog(WARNING, "Generation: %u, Leak: %" PRIu64 ", Rollover: %" PRIu64 ", Last: %" PRIu64, MemoryAccountingCurrentGeneration, rollover_balance - last_rollover_balance, rollover_balance, last_rollover_balance);
+			//MemoryAccounting_PrettyPrint();
+			for (int i = 0 ; i < MEMORY_OWNER_TYPE_Exec_Plan_End; i++)
+			{
+				if (i != MEMORY_OWNER_TYPE_SharedChunkHeader && i != MEMORY_OWNER_TYPE_Rollover && i != MEMORY_OWNER_TYPE_MemAccount && leak_summary[i] > 0)
+				{
+					elog(WARNING, "%s: %" PRIu64 "\n", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
+				}
+			}
+		}
+
+		gp_free2(leak_summary, leak_summary_size);
+
 	}
 
 	InitMemoryAccounting();
@@ -285,22 +317,10 @@ MemoryAccounting_GetBalance(MemoryAccount * memoryAccount)
 			memoryAccount->freed;
 }
 
-/*
- * MemoryAccounting_GetAccountName
- *		Converts MemoryAccount enum values to a descriptive string for reporting
- *		purpose.
- *
- *		We use a trick to save some coding. We currently set executor node's
- *		memory accounting enum values to the same one as their plan node's
- *		enum values. That way we can just pass the plan node's enum values in
- *		the CreateMemoryAccount() call.
- *
- * memoryAccount: The account whose name will be generated
- */
-const char*
-MemoryAccounting_GetAccountName(MemoryAccount *memoryAccount)
+static const char*
+MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
 {
-	switch (memoryAccount->ownerType)
+	switch (ownerType)
 	{
 		case MEMORY_OWNER_TYPE_LogicalRoot:
 			return "Root";
@@ -419,6 +439,28 @@ MemoryAccounting_GetAccountName(MemoryAccount *memoryAccount)
 	}
 
 	return "Error";
+
+}
+
+/*
+ * MemoryAccounting_GetAccountName
+ *		Converts MemoryAccount enum values to a descriptive string for reporting
+ *		purpose.
+ *
+ *		We use a trick to save some coding. We currently set executor node's
+ *		memory accounting enum values to the same one as their plan node's
+ *		enum values. That way we can just pass the plan node's enum values in
+ *		the CreateMemoryAccount() call.
+ *
+ * memoryAccount: The account whose name will be generated
+ */
+const char*
+MemoryAccounting_GetAccountName(MemoryAccount *memoryAccount)
+{
+
+	MemoryOwnerType ownerType = memoryAccount->ownerType;
+	return MemoryAccounting_GetOwnerName(ownerType);
+
 }
 
 /*
@@ -527,6 +569,79 @@ MemoryAccounting_ToString(MemoryAccount *root, StringInfoData *str, uint32 inden
 	uint32 totalWalked = 0;
 	MemoryAccountWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
 }
+
+#define ALLOC_SITE_KEY_SIZE 255
+
+typedef struct
+{
+	char* file_name;
+	int line_no;
+	int64 alloc_count;
+	int64 alloc_size;
+} AllocSiteInfo;
+
+size_t*
+MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size)
+{
+	size_t alloc_size = sizeof(size_t) * MEMORY_OWNER_TYPE_Exec_Plan_End;
+	size_t *leak_summary = gp_malloc(alloc_size);
+	memset(leak_summary, 0, alloc_size);
+
+	uint32 totalWalked = 0;
+	MemoryAccountWalkNode(root, MemoryAccountDetectLeak, leak_summary, 0, &totalWalked, totalWalked);
+
+
+	HASHCTL		ctl;
+	ctl.keysize = ALLOC_SITE_KEY_SIZE;
+	ctl.entrysize = sizeof(AllocSiteInfo);
+
+	HTAB *htab = hash_create("Alloc Info Hash", 1000, &ctl, HASH_ELEM);
+
+	MemoryAccounting_GetAllocationSiteForLeaks(htab, TopMemoryContext);
+
+	*ret_alloc_size = alloc_size;
+	return leak_summary;
+}
+
+void MemoryAccounting_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
+{
+	AllocSet set = (AllocSet) ctxt;
+	AllocSet next;
+	AllocChunk chunk = set->allocList;
+
+	char hashKey[ALLOC_SITE_KEY_SIZE];
+	while(chunk)
+	{
+		memset(hashKey, 0, ALLOC_SITE_KEY_SIZE);
+		sprintf(hashKey, ALLOC_SITE_KEY_SIZE, "%s:%d", chunk->alloc_tag, chunk->alloc_n);
+
+		bool found = false;
+		AllocSiteInfo *hentry = (AllocSiteInfo *) hash_search(htab, hashKey,
+												   HASH_ENTER, &found);
+
+		if (!found)
+		{
+			hentry->file_name = chunk->alloc_tag;
+			hentry->line_no = chunk->alloc_n;
+			hentry->alloc_count = 0;
+			hentry->alloc_size = 0;
+		}
+
+		hentry->alloc_count += 1;
+		hentry->alloc_size += chunk->size;
+
+        //fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
+		chunk = chunk->next_chunk;
+	}
+
+	next = (AllocSet) set->header.firstchild;
+	while(next)
+	{
+		dump_memory_allocation_ctxt(ofile, next);
+		next = (AllocSet) next->header.nextchild;
+	}
+}
+
 
 /*
  * MemoryAccounting_ToCSV
@@ -880,11 +995,23 @@ MemoryAccountToString(MemoryAccount *memoryAccount, void *context, uint32 depth,
     appendStringInfoFill(memAccountCxt->buffer, 2 * depth, ' ');
 
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
-    appendStringInfo(memAccountCxt->buffer, "%s: Peak %" PRIu64 "K bytes. Quota: %" PRIu64 "K bytes.\n",
+    appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
 		MemoryAccounting_GetAccountName(memoryAccount),
-		memoryAccount->peak / 1024, memoryAccount->maxLimit / 1024);
+		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
 
     memAccountCxt->memoryAccountCount++;
+
+    return CdbVisit_Walk;
+}
+
+static CdbVisitOpt
+MemoryAccountDetectLeak(MemoryAccount *memoryAccount, void *context, uint32 depth,
+		uint32 parentWalkSerial, uint32 curWalkSerial)
+{
+	if (memoryAccount == NULL) return CdbVisit_Walk;
+
+	size_t *leak_summary = (size_t*) context;
+	leak_summary[memoryAccount->ownerType] += MemoryAccounting_GetBalance(memoryAccount);
 
     return CdbVisit_Walk;
 }

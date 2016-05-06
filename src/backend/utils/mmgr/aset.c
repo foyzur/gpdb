@@ -324,8 +324,6 @@ void dump_tmc(const char *fname)
  * Debug macros
  * ----------
  */
-#ifdef CDB_PALLOC_TAGS
-
 void dump_memory_allocation(const char* fname)
 {
 	FILE *ofile = fopen(fname, "w+");
@@ -356,7 +354,6 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 		next = (AllocSet) next->header.nextchild;
 	}
 }
-#endif
 
 inline void
 AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader) __attribute__((always_inline));
