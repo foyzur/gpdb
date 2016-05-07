@@ -232,9 +232,9 @@ MemoryAccounting_Reset()
 
 		size_t rollover_balance = MemoryAccounting_GetBalance(RolloverMemoryAccount);
 
-		if (memory_profiler_dataset_size == 10 && last_rollover_balance > 0 && rollover_balance > last_rollover_balance)
+		if (leak_detection_level != LEAK_DETECTION_LEVEL_DISABLE && last_rollover_balance > 0 && rollover_balance > last_rollover_balance)
 		{
-			elog(WARNING, "Generation: %u, Leak: %" PRIu64 ", Rollover: %" PRIu64 ", Last: %" PRIu64, MemoryAccountingCurrentGeneration, rollover_balance - last_rollover_balance, rollover_balance, last_rollover_balance);
+			elog(WARNING, "Detected Leak of %" PRIu64 ".", rollover_balance/* - last_rollover_balance*/);
 			//MemoryAccounting_PrettyPrint();
 			MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(leak_summary);
 			MemoryAccounting_PrintLeakSites(htab);
@@ -260,11 +260,11 @@ MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary)
 		if (i != MEMORY_OWNER_TYPE_SharedChunkHeader && i != MEMORY_OWNER_TYPE_Rollover && i != MEMORY_OWNER_TYPE_MemAccount && leak_summary[i] > 0)
 		{
 			//elog(WARNING, "%s: %" PRIu64 "\n", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
-		    appendStringInfo(&memBuf, "%s: %" PRIu64 " | ", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
+		    appendStringInfo(&memBuf, "%s => %" PRIu64 " | ", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
 		}
 	}
 
-	elog(WARNING, "%s\n", memBuf.data);
+	elog(WARNING, "Top leaking memory accounts: %s\n", memBuf.data);
 
 	pfree(memBuf.data);
 }
@@ -309,10 +309,10 @@ MemoryAccounting_PrintLeakSites(HTAB *htab)
 	for (int i = 0; i < 3; i++)
 	{
 		//elog(WARNING, "%s:%ld => %ld, %ld", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_count, sorted[i]->alloc_size);
-	    appendStringInfo(&memBuf, "%s:%ld => %ld, %ld | ", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_count, sorted[i]->alloc_size);
+	    appendStringInfo(&memBuf, "%s:%ld => %ld | ", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_size);
 	}
 
-	elog(WARNING, "%s\n", memBuf.data);
+	elog(WARNING, "Top leaking sites: %s\n", memBuf.data);
 
 	pfree(memBuf.data);
 
