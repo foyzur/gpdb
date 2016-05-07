@@ -373,23 +373,26 @@ void MemoryContext_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
 	char hashKey[ALLOC_SITE_KEY_SIZE];
 	while(chunk)
 	{
-		memset(hashKey, 0, ALLOC_SITE_KEY_SIZE);
-		snprintf(hashKey, ALLOC_SITE_KEY_SIZE, "%s:%d", chunk->alloc_tag, chunk->alloc_n);
-
-		bool found = false;
-		AllocSiteInfo *hentry = (AllocSiteInfo *) hash_search(htab, hashKey,
-												   HASH_ENTER, &found);
-
-		if (!found)
+		if (chunk->sharedHeader != NULL)// && chunk->sharedHeader->memoryAccountGeneration == MemoryAccountingCurrentGeneration)
 		{
-			hentry->file_name = chunk->alloc_tag;
-			hentry->line_no = chunk->alloc_n;
-			hentry->alloc_count = 0;
-			hentry->alloc_size = 0;
-		}
+			memset(hashKey, 0, ALLOC_SITE_KEY_SIZE);
+			snprintf(hashKey, ALLOC_SITE_KEY_SIZE, "%s:%d", chunk->alloc_tag, chunk->alloc_n);
 
-		hentry->alloc_count += 1;
-		hentry->alloc_size += chunk->size;
+			bool found = false;
+			AllocSiteInfo *hentry = (AllocSiteInfo *) hash_search(htab, hashKey,
+													   HASH_ENTER, &found);
+
+			if (!found)
+			{
+				hentry->file_name = chunk->alloc_tag;
+				hentry->line_no = chunk->alloc_n;
+				hentry->alloc_count = 0;
+				hentry->alloc_size = 0;
+			}
+
+			hentry->alloc_count += 1;
+			hentry->alloc_size += chunk->size;
+		}
 
         //fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
 		chunk = chunk->next_chunk;
