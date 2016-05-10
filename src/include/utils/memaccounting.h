@@ -35,6 +35,7 @@ struct MemoryContextData;
 extern int explain_memory_verbosity;
 
 extern int leak_detection_level;
+extern int leak_detection_ignore;
 
 /*
  * Unique run id for memory profiling. May be just a start timestamp for a batch of queries such as TPCH

@@ -103,7 +103,6 @@ static const char *assign_system_cache_flush_force(const char *newval, bool doit
 static const char *assign_gp_idf_deduplicate(const char *newval, bool doit,
 						  GucSource source);
 static const char *assign_explain_memory_verbosity(const char *newval, bool doit, GucSource source);
-static const char *assign_leak_detection_level(const char *newval, bool doit, GucSource source);
 static bool assign_dispatch_log_stats(bool newval, bool doit, GucSource source);
 
 static const char *assign_debug_dtm_action(const char *newval,
@@ -230,6 +229,7 @@ bool		log_dispatch_stats = false;
 
 int			explain_memory_verbosity = 0;
 int			leak_detection_level = 0;
+int			leak_detection_ignore = 0;
 char	   *memory_profiler_run_id = "none";
 char	   *memory_profiler_dataset_id = "none";
 char	   *memory_profiler_query_id = "none";
@@ -379,7 +379,6 @@ static char *gp_log_format_string;
 static char *gp_workfile_caching_loglevel_str;
 static char *gp_sessionstate_loglevel_str;
 static char *explain_memory_verbosity_str;
-static char *leak_detection_level_str;
 
 /* Backoff-related GUCs */
 bool		gp_enable_resqueue_priority;
@@ -4671,6 +4670,26 @@ struct config_int ConfigureNamesInt_gp[] =
 	},
 
 	{
+		{"leak_detection_level", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Consider allocations leaked only if they live longer than leak_detection_level generation."),
+			NULL,
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&leak_detection_level,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"leak_detection_ignore", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Ignores allocations of first leak_detection_ignore generations."),
+			NULL,
+			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&leak_detection_ignore,
+		5, 0, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"memory_profiler_dataset_size", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Set the size in GB"),
 			NULL,
@@ -4960,16 +4979,6 @@ struct config_string ConfigureNamesString_gp[] =
 		},
 		&explain_memory_verbosity_str,
 		"suppress", assign_explain_memory_verbosity, NULL
-	},
-
-	{
-		{"leak_detection_level", PGC_USERSET, RESOURCES_MEM,
-			gettext_noop("Experimental feature: detect and report leaks."),
-			gettext_noop("Valid values are DISABLE, LAST, and ALL."),
-			GUC_GPDB_ADDOPT
-		},
-		&leak_detection_level_str,
-		"DISABLE", assign_leak_detection_level, NULL
 	},
 
 	{
@@ -5789,33 +5798,6 @@ assign_explain_memory_verbosity(const char *newval, bool doit, GucSource source)
 	else
 	{
 		printf("Unknown memory verbosity.");
-		return NULL;
-	}
-
-	return newval;
-}
-
-static const char *
-assign_leak_detection_level(const char *newval, bool doit, GucSource source)
-{
-	if (pg_strcasecmp(newval, "disable") == 0)
-	{
-		if (doit)
-			leak_detection_level = LEAK_DETECTION_LEVEL_DISABLE;
-	}
-	else if (pg_strcasecmp(newval, "last") == 0)
-	{
-		if (doit)
-			leak_detection_level = LEAK_DETECTION_LEVEL_LAST;
-	}
-	else if (pg_strcasecmp(newval, "all") == 0)
-	{
-		if (doit)
-			leak_detection_level = LEAK_DETECTION_LEVEL_ALL;
-	}
-	else
-	{
-		printf("Unknown leak detection level.");
 		return NULL;
 	}
 

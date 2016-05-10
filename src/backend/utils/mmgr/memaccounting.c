@@ -232,17 +232,16 @@ MemoryAccounting_Reset()
 
 		size_t rollover_balance = MemoryAccounting_GetBalance(RolloverMemoryAccount);
 
-		if (leak_detection_level != LEAK_DETECTION_LEVEL_DISABLE && last_rollover_balance > 0 && rollover_balance > last_rollover_balance)
+		if (leak_detection_level != 0 && MemoryAccountingCurrentGeneration > 3 && last_rollover_balance > 0 && rollover_balance > last_rollover_balance)
 		{
-			elog(WARNING, "Detected Leak of %" PRIu64 ".", rollover_balance/* - last_rollover_balance*/);
+			//elog(WARNING, "Detected Leak of %" PRIu64 " (%" PRIu64 ")", rollover_balance - last_rollover_balance, rollover_balance);
 			//MemoryAccounting_PrettyPrint();
-			MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(leak_summary);
+			//MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(leak_summary);
 			MemoryAccounting_PrintLeakSites(htab);
 		}
 
 		hash_destroy(htab);
 		gp_free2(leak_summary, leak_summary_size);
-
 	}
 
 	InitMemoryAccounting();
@@ -251,6 +250,7 @@ MemoryAccounting_Reset()
 void
 MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary)
 {
+	MemoryContext mcxt = MemoryContextSwitchTo(MemoryAccountDebugContext);
 	StringInfoData memBuf;
 	initStringInfo(&memBuf);
 
@@ -267,11 +267,15 @@ MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary)
 	elog(WARNING, "Top leaking memory accounts: %s\n", memBuf.data);
 
 	pfree(memBuf.data);
+
+	MemoryContextSwitchTo(mcxt);
 }
 
 static void
 MemoryAccounting_PrintLeakSites(HTAB *htab)
 {
+	MemoryContext mcxt = MemoryContextSwitchTo(MemoryAccountDebugContext);
+
 	HASH_SEQ_STATUS status;
 	HTAB *hashp;
 	hash_seq_init(&status, htab);
@@ -306,7 +310,7 @@ MemoryAccounting_PrintLeakSites(HTAB *htab)
 	StringInfoData memBuf;
 	initStringInfo(&memBuf);
 
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < Min(memory_profiler_dataset_size, num_entries); i++)
 	{
 		//elog(WARNING, "%s:%ld => %ld, %ld", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_count, sorted[i]->alloc_size);
 	    appendStringInfo(&memBuf, "%s:%ld => %ld | ", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_size);
@@ -319,6 +323,7 @@ MemoryAccounting_PrintLeakSites(HTAB *htab)
 	pfree(sorted);
 
 	//hash_seq_term(&status);
+	MemoryContextSwitchTo(mcxt);
 }
 
 /*
