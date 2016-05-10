@@ -357,10 +357,23 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 	}
 }
 
+static bool IsQualifiedLeak(uint16 generation)
+{
+	if (generation < leak_detection_ignore)
+	{
+		return false;
+	}
+
+	// TODO: This is invalid check if we have generation overflow, as
+	// everything will qualify as leak and the live counter can also overflow
+	//uint16 live = MemoryAccountingCurrentGeneration - generation + 1; // Adding 1 to compensate for last generation detection
+	return leak_detection_level != 0 && (leak_detection_level >= (MemoryAccountingCurrentGeneration - generation + 1));
+}
+
 void MemoryContext_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
 {
 	// hack to ignore all the allocations done by logging code, such as dynahash to compute agg per allocation site
-	if (ctxt == MemoryAccountDebugContext)
+	if (ctxt == MemoryAccountDebugContext || ctxt == MemoryAccountMemoryContext)
 	{
 //		elog(WARNING, "Skipping MemoryAccountDebugContext");
 		return;
@@ -373,7 +386,7 @@ void MemoryContext_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
 	char hashKey[ALLOC_SITE_KEY_SIZE];
 	while(chunk)
 	{
-		if (chunk->sharedHeader != NULL)// && chunk->sharedHeader->memoryAccountGeneration == MemoryAccountingCurrentGeneration)
+		if (chunk->sharedHeader != NULL && IsQualifiedLeak(chunk->sharedHeader->memoryAccountGeneration))
 		{
 			memset(hashKey, 0, ALLOC_SITE_KEY_SIZE);
 			snprintf(hashKey, ALLOC_SITE_KEY_SIZE, "%s:%d", chunk->alloc_tag, chunk->alloc_n);

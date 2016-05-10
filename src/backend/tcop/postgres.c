@@ -4574,6 +4574,27 @@ PostgresMain(int argc, char *argv[],
 		VmemTracker_ResetMaxVmemReserved();
 		MemoryAccounting_ResetPeakBalance();
 
+		if (!IsTransactionOrTransactionBlock()){
+			/* Reset memory accounting */
+
+			/*
+			 * We finished processing the last query and currently we are not under
+			 * any transaction. So reset memory accounting. Note: any memory
+			 * allocated before resetting will go into the rollover memory account,
+			 * allocated under top memory context.
+			 */
+			MemoryAccounting_Reset();
+
+			postgresMainMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MainEntry);
+			/*
+			 * Don't attempt to save previous memory account. This will be invalid by the time we attempt to restore.
+			 * This is why we are not using our START_MEMORY_ACCOUNT and END_MEMORY_ACCOUNT macros
+			 */
+			MemoryAccounting_SwitchAccount(postgresMainMemoryAccount);
+
+			/* End of memory accounting setup */
+		}
+
 		initStringInfo(&input_message);
 
         /* Reset elog globals */
@@ -4665,30 +4686,12 @@ PostgresMain(int argc, char *argv[],
 					elog(FATAL, "could not set timer for client wait timeout");
 		}
 
+		elog(WARNING, "Balance: %ld", MemoryAccountingOutstandingBalance);
 		IdleTracker_DeactivateProcess();
 		firstchar = ReadCommand(&input_message);
 		IdleTracker_ActivateProcess();
 
-		if (!IsTransactionOrTransactionBlock()){
-			/* Reset memory accounting */
-
-			/*
-			 * We finished processing the last query and currently we are not under
-			 * any transaction. So reset memory accounting. Note: any memory
-			 * allocated before resetting will go into the rollover memory account,
-			 * allocated under top memory context.
-			 */
-			MemoryAccounting_Reset();
-
-			postgresMainMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MainEntry);
-			/*
-			 * Don't attempt to save previous memory account. This will be invalid by the time we attempt to restore.
-			 * This is why we are not using our START_MEMORY_ACCOUNT and END_MEMORY_ACCOUNT macros
-			 */
-			MemoryAccounting_SwitchAccount(postgresMainMemoryAccount);
-
-			/* End of memory accounting setup */
-		}
+		//char* test = MemoryContextAlloc(TopMemoryContext, 10);
 
 		/*
 		 * (4) disable async signal conditions again.

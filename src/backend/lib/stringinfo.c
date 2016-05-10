@@ -43,11 +43,11 @@ makeStringInfo(void)
  * to describe an empty string.
  */
 void
-initStringInfo(StringInfo str)
+initStringInfoImpl(StringInfo str, const char* sfile, const char *sfunc, int sline)
 {
 	int			size = 1024;		/* initial default buffer size */
 
-	str->data = (char *) palloc(size);
+	str->data = (char *) MemoryContextAllocImpl(CurrentMemoryContext, size, sfile, sfunc, sline);
 	str->maxlen = size;
 	str->len = 0;
 	str->data[0] = '\0';
