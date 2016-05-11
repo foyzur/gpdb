@@ -92,6 +92,7 @@ typedef struct
 	int line_no;
 	int64 alloc_count;
 	int64 alloc_size;
+	uint64 gen_allocated; // which generations did we allocate from this site
 } AllocSiteInfo;
 
 /*
