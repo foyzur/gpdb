@@ -357,17 +357,12 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 	}
 }
 
-static bool IsQualifiedLeak(uint16 generation)
+static bool IsQualifiedLeak(uint16 gen_lag)
 {
-	if (generation < leak_detection_ignore)
-	{
-		return false;
-	}
-
 	// TODO: This is invalid check if we have generation overflow, as
 	// everything will qualify as leak and the live counter can also overflow
 	//uint16 live = MemoryAccountingCurrentGeneration - generation + 1; // Adding 1 to compensate for last generation detection
-	return leak_detection_level != 0 && (leak_detection_level >= (MemoryAccountingCurrentGeneration - generation + 1));
+	return leak_detection_level != 0 && (leak_detection_level >= gen_lag + 1);
 }
 
 void MemoryContext_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
@@ -386,8 +381,11 @@ void MemoryContext_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
 	char hashKey[ALLOC_SITE_KEY_SIZE];
 	while(chunk)
 	{
-		if (chunk->sharedHeader != NULL && IsQualifiedLeak(chunk->sharedHeader->memoryAccountGeneration))
+		if (chunk->sharedHeader != NULL)
 		{
+			uint16 generation = chunk->sharedHeader->memoryAccountGeneration;
+			uint16 gen_lag = (MemoryAccountingCurrentGeneration - generation);
+
 			memset(hashKey, 0, ALLOC_SITE_KEY_SIZE);
 			snprintf(hashKey, ALLOC_SITE_KEY_SIZE, "%s:%d", chunk->alloc_tag, chunk->alloc_n);
 
@@ -401,10 +399,17 @@ void MemoryContext_GetAllocationSiteForLeaks(HTAB * htab, void *ctxt)
 				hentry->line_no = chunk->alloc_n;
 				hentry->alloc_count = 0;
 				hentry->alloc_size = 0;
+				hentry->gen_allocated = 0;
 			}
 
 			hentry->alloc_count += 1;
 			hentry->alloc_size += chunk->size;
+
+			if (IsQualifiedLeak(gen_lag))
+			{
+				hentry->gen_allocated |= (1 << gen_lag);
+				//hentry->gen_allocated |=
+			}
 		}
 
         //fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);

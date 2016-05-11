@@ -271,6 +271,18 @@ MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary)
 	MemoryContextSwitchTo(mcxt);
 }
 
+static bool
+EligibleLeak(AllocSiteInfo *info)
+{
+	uint64 gen_allocated_req_mask = (1 << leak_detection_ignore) - 1;
+	if ((info->gen_allocated & gen_allocated_req_mask) == gen_allocated_req_mask)
+	{
+		return true;
+	}
+
+	return false;
+}
+
 static void
 MemoryAccounting_PrintLeakSites(HTAB *htab)
 {
@@ -283,20 +295,23 @@ MemoryAccounting_PrintLeakSites(HTAB *htab)
 	long num_entries = hash_get_num_entries(htab);
 	AllocSiteInfo **sorted = MemoryContextAllocZero(MemoryAccountMemoryContext, sizeof(AllocSiteInfo *) * num_entries);
 
-	int hash_idx = 0;
+	int eligible_entries = 0;
 
 	AllocSiteInfo *info = hash_seq_search(&status);
 
 	while (NULL != info)
 	{
-		//elog(WARNING, "%s:%ld => %ld, %ld", info->file_name, info->line_no, info->alloc_count, info->alloc_size);
-		sorted[hash_idx++] = info;
+		if (EligibleLeak(info))
+		{
+			//elog(WARNING, "%s:%ld => %ld, %ld", info->file_name, info->line_no, info->alloc_count, info->alloc_size);
+			sorted[eligible_entries++] = info;
+		}
 		info = hash_seq_search(&status);
 	}
 
-	for (int i = 0; i < num_entries; i++)
+	for (int i = 0; i < eligible_entries; i++)
 	{
-		for (int j = i; j < num_entries; j++){
+		for (int j = i; j < eligible_entries; j++){
 			if (sorted[i]->alloc_size < sorted[j]->alloc_size)
 			{
 				AllocSiteInfo *tempInfo = sorted[i];
@@ -310,7 +325,7 @@ MemoryAccounting_PrintLeakSites(HTAB *htab)
 	StringInfoData memBuf;
 	initStringInfo(&memBuf);
 
-	for (int i = 0; i < Min(memory_profiler_dataset_size, num_entries); i++)
+	for (int i = 0; i < Min(memory_profiler_dataset_size, eligible_entries); i++)
 	{
 		//elog(WARNING, "%s:%ld => %ld, %ld", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_count, sorted[i]->alloc_size);
 	    appendStringInfo(&memBuf, "%s:%ld => %ld | ", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_size);
