@@ -3361,7 +3361,7 @@ SetupUDPIFCInterconnect_Internal(EState *estate)
 	     * Prune only when we are not in the save transaction and there is a large number
 	     * of entries in the table
 	     */
-	    if (distTransId != rx_control_info.lastDXatId && rx_control_info.cursorHistoryTable.count > (2 * CURSOR_IC_TABLE_SIZE))
+	    if (distTransId != rx_control_info.lastDXatId /* && rx_control_info.cursorHistoryTable.count > (2 * CURSOR_IC_TABLE_SIZE)*/)
 	    {
 	    	if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
 	    		elog(DEBUG1, "prune cursor history table (count %d), icid %d", rx_control_info.cursorHistoryTable.count, gp_interconnect_id);
