@@ -2157,6 +2157,8 @@ cleanupAllIdleGangs(void)
 			 * resources being consumed on the segDBs at all.
 			 */
 			disconnectAndDestroyAllGangs();
+			MemoryContextReset(GangContext);
+
 			/*
 			 * Our session wasn't destroyed due to an fatal error or FTS action, so we don't need to
 			 * do anything special.  Specifically, we DON'T want to act like we are now in a new session,
