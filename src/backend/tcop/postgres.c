@@ -4901,7 +4901,11 @@ PostgresMain(int argc, char *argv[],
 					elog(FATAL, "could not set timer for client wait timeout");
 		}
 
-		elog(WARNING, "Balance: %ld", MemoryAccountingOutstandingBalance);
+		if (Gp_segment == -1 && leak_detection_level != 0)
+		{
+			elog(WARNING, "Balance: %ld", MemoryAccountingOutstandingBalance);
+		}
+
 		IdleTracker_DeactivateProcess();
 		firstchar = ReadCommand(&input_message);
 		IdleTracker_ActivateProcess();
