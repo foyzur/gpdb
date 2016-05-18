@@ -699,6 +699,12 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
 static MemoryAccount*
 CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccount* parent)
 {
+	if (ownerType > MEMORY_OWNER_TYPE_MemAccount)
+	{
+		Assert(NULL != RolloverMemoryAccount);
+		return RolloverMemoryAccount;
+	}
+
 	/* We don't touch the oldContext. We create all MemoryAccount in MemoryAccountMemoryContext */
     MemoryContext oldContext = NULL;
 	MemoryAccount* newAccount = NULL; /* Return value */
