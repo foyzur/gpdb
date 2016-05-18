@@ -69,66 +69,70 @@ extern bool gp_dump_memory_usage;
 typedef enum MemoryOwnerType
 {
 	/* Long-living accounts that survive reset */
-	MEMORY_OWNER_TYPE_LogicalRoot = 10,
-	MEMORY_OWNER_TYPE_SharedChunkHeader = 11,
-	MEMORY_OWNER_TYPE_Rollover = 12,
-	MEMORY_OWNER_TYPE_MemAccount = 13,
+	// Reserve 0 for undefined/uninitialized memory account id
+	MEMORY_OWNER_TYPE_Undefined = 0,
+	MEMORY_OWNER_TYPE_LogicalRoot,
+	MEMORY_OWNER_TYPE_SharedChunkHeader,
+	MEMORY_OWNER_TYPE_Rollover,
+	MEMORY_OWNER_TYPE_MemAccount,
+	MEMORY_OWNER_TYPE_END_LONG_LIVING = MEMORY_OWNER_TYPE_MemAccount,
 	/* End of long-living accounts */
 
 	/* Short-living accounts */
-	MEMORY_OWNER_TYPE_Top = 101,
-	MEMORY_OWNER_TYPE_MainEntry = 102,
-	MEMORY_OWNER_TYPE_Parser = 103,
-	MEMORY_OWNER_TYPE_Planner = 104,
-	MEMORY_OWNER_TYPE_Optimizer = 105,
-	MEMORY_OWNER_TYPE_Dispatcher = 106,
-	MEMORY_OWNER_TYPE_Serializer = 107,
-	MEMORY_OWNER_TYPE_Deserializer = 108,
+	MEMORY_OWNER_TYPE_Top,
+	MEMORY_OWNER_TYPE_MainEntry,
+	MEMORY_OWNER_TYPE_Parser,
+	MEMORY_OWNER_TYPE_Planner,
+	MEMORY_OWNER_TYPE_Optimizer,
+	MEMORY_OWNER_TYPE_Dispatcher,
+	MEMORY_OWNER_TYPE_Serializer,
+	MEMORY_OWNER_TYPE_Deserializer,
 
-	MEMORY_OWNER_TYPE_EXECUTOR = 1000,
-	MEMORY_OWNER_TYPE_Exec_Result = 1001,
-	MEMORY_OWNER_TYPE_Exec_Append = 1002,
-	MEMORY_OWNER_TYPE_Exec_Sequence = 1003,
-	MEMORY_OWNER_TYPE_Exec_BitmapAnd = 1004,
-	MEMORY_OWNER_TYPE_Exec_BitmapOr = 1005,
-	MEMORY_OWNER_TYPE_Exec_SeqScan = 1006,
-	MEMORY_OWNER_TYPE_Exec_ExternalScan = 1007,
-	MEMORY_OWNER_TYPE_Exec_AppendOnlyScan = 1008,
-	MEMORY_OWNER_TYPE_Exec_AOCSScan = 1009,
-	MEMORY_OWNER_TYPE_Exec_TableScan = 1010,
-	MEMORY_OWNER_TYPE_Exec_DynamicTableScan = 1011,
-	MEMORY_OWNER_TYPE_Exec_IndexScan = 1012,
-	MEMORY_OWNER_TYPE_Exec_DynamicIndexScan = 1013,
-	MEMORY_OWNER_TYPE_Exec_BitmapIndexScan = 1014,
-	MEMORY_OWNER_TYPE_Exec_BitmapHeapScan = 1015,
-	MEMORY_OWNER_TYPE_Exec_BitmapAppendOnlyScan = 1016,
-	MEMORY_OWNER_TYPE_Exec_TidScan = 1017,
-	MEMORY_OWNER_TYPE_Exec_SubqueryScan = 1018,
-	MEMORY_OWNER_TYPE_Exec_FunctionScan = 1019,
-	MEMORY_OWNER_TYPE_Exec_TableFunctionScan = 1020,
-	MEMORY_OWNER_TYPE_Exec_ValuesScan = 1021,
-	MEMORY_OWNER_TYPE_Exec_NestLoop = 1022,
-	MEMORY_OWNER_TYPE_Exec_MergeJoin = 1023,
-	MEMORY_OWNER_TYPE_Exec_HashJoin = 1024,
-	MEMORY_OWNER_TYPE_Exec_Material = 1025,
-	MEMORY_OWNER_TYPE_Exec_Sort = 1026,
-	MEMORY_OWNER_TYPE_Exec_Agg = 1027,
-	MEMORY_OWNER_TYPE_Exec_Unique = 1028,
-	MEMORY_OWNER_TYPE_Exec_Hash = 1029,
-	MEMORY_OWNER_TYPE_Exec_SetOp = 1030,
-	MEMORY_OWNER_TYPE_Exec_Limit = 1031,
-	MEMORY_OWNER_TYPE_Exec_Motion = 1032,
-	MEMORY_OWNER_TYPE_Exec_ShareInputScan = 1033,
-	MEMORY_OWNER_TYPE_Exec_Window = 1034,
-	MEMORY_OWNER_TYPE_Exec_Repeat = 1035,
-	MEMORY_OWNER_TYPE_Exec_DML = 1036,
-	MEMORY_OWNER_TYPE_Exec_SplitUpdate = 1037,
-	MEMORY_OWNER_TYPE_Exec_RowTrigger = 1038,
-	MEMORY_OWNER_TYPE_Exec_AssertOp = 1039,
-	MEMORY_OWNER_TYPE_Exec_AlienShared = 1040,
-	MEMORY_OWNER_TYPE_Exec_BitmapTableScan = 1041,
-	MEMORY_OWNER_TYPE_Exec_PartitionSelector = 1042,
-	MEMORY_OWNER_TYPE_Exec_Plan_End, /* No explicit number. Automatically gets the last of executor enumeration */
+	MEMORY_OWNER_TYPE_EXECUTOR_START,
+	MEMORY_OWNER_TYPE_EXECUTOR = MEMORY_OWNER_TYPE_EXECUTOR_START,
+	MEMORY_OWNER_TYPE_Exec_Result,
+	MEMORY_OWNER_TYPE_Exec_Append,
+	MEMORY_OWNER_TYPE_Exec_Sequence,
+	MEMORY_OWNER_TYPE_Exec_BitmapAnd,
+	MEMORY_OWNER_TYPE_Exec_BitmapOr,
+	MEMORY_OWNER_TYPE_Exec_SeqScan,
+	MEMORY_OWNER_TYPE_Exec_ExternalScan,
+	MEMORY_OWNER_TYPE_Exec_AppendOnlyScan,
+	MEMORY_OWNER_TYPE_Exec_AOCSScan,
+	MEMORY_OWNER_TYPE_Exec_TableScan,
+	MEMORY_OWNER_TYPE_Exec_DynamicTableScan,
+	MEMORY_OWNER_TYPE_Exec_IndexScan,
+	MEMORY_OWNER_TYPE_Exec_DynamicIndexScan,
+	MEMORY_OWNER_TYPE_Exec_BitmapIndexScan,
+	MEMORY_OWNER_TYPE_Exec_BitmapHeapScan,
+	MEMORY_OWNER_TYPE_Exec_BitmapAppendOnlyScan,
+	MEMORY_OWNER_TYPE_Exec_TidScan,
+	MEMORY_OWNER_TYPE_Exec_SubqueryScan,
+	MEMORY_OWNER_TYPE_Exec_FunctionScan,
+	MEMORY_OWNER_TYPE_Exec_TableFunctionScan,
+	MEMORY_OWNER_TYPE_Exec_ValuesScan,
+	MEMORY_OWNER_TYPE_Exec_NestLoop,
+	MEMORY_OWNER_TYPE_Exec_MergeJoin,
+	MEMORY_OWNER_TYPE_Exec_HashJoin,
+	MEMORY_OWNER_TYPE_Exec_Material,
+	MEMORY_OWNER_TYPE_Exec_Sort,
+	MEMORY_OWNER_TYPE_Exec_Agg,
+	MEMORY_OWNER_TYPE_Exec_Unique,
+	MEMORY_OWNER_TYPE_Exec_Hash,
+	MEMORY_OWNER_TYPE_Exec_SetOp,
+	MEMORY_OWNER_TYPE_Exec_Limit,
+	MEMORY_OWNER_TYPE_Exec_Motion,
+	MEMORY_OWNER_TYPE_Exec_ShareInputScan,
+	MEMORY_OWNER_TYPE_Exec_Window,
+	MEMORY_OWNER_TYPE_Exec_Repeat,
+	MEMORY_OWNER_TYPE_Exec_DML,
+	MEMORY_OWNER_TYPE_Exec_SplitUpdate,
+	MEMORY_OWNER_TYPE_Exec_RowTrigger,
+	MEMORY_OWNER_TYPE_Exec_AssertOp,
+	MEMORY_OWNER_TYPE_Exec_AlienShared,
+	MEMORY_OWNER_TYPE_Exec_BitmapTableScan,
+	MEMORY_OWNER_TYPE_Exec_PartitionSelector,
+	MEMORY_OWNER_TYPE_EXECUTOR_END = MEMORY_OWNER_TYPE_Exec_PartitionSelector,
 
 } MemoryOwnerType;
 
@@ -143,6 +147,7 @@ typedef enum MemoryOwnerType
 /***************************************************************************/
 
 struct MemoryAccount;
+struct MemoryAccountArray;
 
 extern struct MemoryAccount* ActiveMemoryAccount;
 extern struct MemoryAccount* RolloverMemoryAccount;
@@ -153,6 +158,11 @@ extern uint64 MemoryAccountingOutstandingBalance;
 extern uint64 MemoryAccountingPeakBalance;
 
 extern uint16 MemoryAccountingCurrentGeneration;
+
+typedef uint64 MemoryAccountIdType;
+
+// Array of accounts available
+extern struct MemoryAccountArray* memoryAccountArray;
 
 /* MemoryAccount is the fundamental data structure to record memory usage */
 typedef struct MemoryAccount {
@@ -168,22 +178,15 @@ typedef struct MemoryAccount {
 	 */
 	uint64 maxLimit;
 
-	/* If this account requests the privilege to "disown" some of the allocation
-	 * that would otherwise be charged to its account, then disownedMemoryAccount
-	 * holds a hidden account which will be used for allocation during a "disowned"
-	 * state (upon calling "DisownMemoryAccount()").
-	 */
-	//struct MemoryAccount *disownedMemoryAccount;
-	struct MemoryAccount *parentAccount;
-
-	/*
-	 * To traverse the tree of MemoryAccount, start from the Top. Read the firstChild and then read the
-	 * nextSibling of the firstChild. And continue this process. For each of the nextSibling, you can call
-	 * firstChild to descend the tree.
-	 */
-	struct MemoryAccount* firstChild;
-	struct MemoryAccount* nextSibling;
+	MemoryAccountIdType id;
+	MemoryAccountIdType parentId;
 } MemoryAccount;
+
+typedef struct MemoryAccountArray{
+	MemoryAccountIdType accountCount;
+	// array of pointers to memory accounts of size accountCount
+	MemoryAccount** allAccounts;
+} MemoryAccountArray;
 
 /*
  * Instead of pointers to construct the tree, the SerializedMemoryAccount
@@ -211,12 +214,13 @@ typedef struct SerializedMemoryAccount {
  * START_MEMORY_ACCOUNT would switch to the specified newMemoryAccount,
  * saving the oldActiveMemoryAccount. Must be paired with END_MEMORY_ACCOUNT
  */
-#define START_MEMORY_ACCOUNT(newMemoryAccount)  \
+#define START_MEMORY_ACCOUNT(newMemoryAccountId)  \
 	do { \
 		MemoryAccount *oldActiveMemoryAccount = NULL; \
-		Assert(newMemoryAccount != NULL); \
+		Assert(NULL != memoryAccountArray); \
+		Assert(newMemoryAccountId < memoryAccountArray->accountCount); \
 		oldActiveMemoryAccount = ActiveMemoryAccount; \
-		ActiveMemoryAccount = newMemoryAccount;\
+		ActiveMemoryAccount = memoryAccountArray[newMemoryAccountId];\
 /*
  * END_MEMORY_ACCOUNT would restore the previous memory account that was
  * active at the time of START_MEMORY_ACCCOUNT call
@@ -233,33 +237,30 @@ typedef struct SerializedMemoryAccount {
  * that will not be executed in current slice
  */
 #define CREATE_EXECUTOR_MEMORY_ACCOUNT(isAlienPlanNode, planNode, NodeType) \
-	(isAlienPlanNode ? AlienExecutorMemoryAccount :						\
-	 MemoryAccounting_CreateAccount(((Plan*)node)->operatorMemKB == 0 ? \
-									work_mem : ((Plan*)node)->operatorMemKB, MEMORY_OWNER_TYPE_Exec_##NodeType))
+		(MEMORY_OWNER_TYPE_Undefined != planNode->memoryAccountId) ?\
+			planNode->memoryAccountId : \
+			(isAlienPlanNode ? AlienExecutorMemoryAccount->id : \
+				MemoryAccounting_CreateAccount(((Plan*)node)->operatorMemKB == 0 ? \
+				work_mem : ((Plan*)node)->operatorMemKB, MEMORY_OWNER_TYPE_Exec_##NodeType));
 
 /*
  * SAVE_EXECUTOR_MEMORY_ACCOUNT saves an operator specific memory account
  * into the PlanState of that operator
  */
-#define SAVE_EXECUTOR_MEMORY_ACCOUNT(execState, curMemoryAccount)\
-	do { \
-		Assert(NULL == ((PlanState *)execState)->memoryAccount || \
-			   AlienExecutorMemoryAccount == ((PlanState *)execState)->memoryAccount || \
-			   curMemoryAccount == ((PlanState *)execState)->memoryAccount); \
-		((PlanState *)execState)->memoryAccount = curMemoryAccount; \
-	} while(0)
+#define SAVE_EXECUTOR_MEMORY_ACCOUNT(execState, curMemoryAccountId)\
+		Assert(MEMORY_OWNER_TYPE_Undefined == ((PlanState *)execState)->plan->memoryAccountId || \
+		MEMORY_OWNER_TYPE_Undefined == ((PlanState *)execState)->plan->memoryAccount || \
+		curMemoryAccountId == ((PlanState *)execState)->plan->memoryAccountId);\
+		((PlanState *)execState)->plan->memoryAccountId = curMemoryAccountId;
 
-extern struct MemoryAccount*
+extern MemoryAccountIdType
 MemoryAccounting_CreateAccount(long maxLimit, enum MemoryOwnerType ownerType);
 
-extern MemoryAccount*
-MemoryAccounting_SwitchAccount(struct MemoryAccount* desiredAccount);
+extern MemoryAccountIdType
+MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId);
 
 extern void
 MemoryAccounting_Reset(void);
-
-extern void
-MemoryAccounting_ResetPeakBalance(void);
 
 extern uint32
 MemoryAccounting_Serialize(StringInfoData* buffer);
@@ -285,7 +286,7 @@ extern uint32
 MemoryAccounting_SaveToLog(void);
 
 extern const char*
-MemoryAccounting_GetAccountName(MemoryAccount *memoryAccount);
+MemoryAccounting_GetAccountName(MemoryAccountIdType memoryAccountId);
 
 extern void
 MemoryAccounting_ToCSV(MemoryAccount *root, StringInfoData *str, char *prefix);
