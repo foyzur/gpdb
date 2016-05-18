@@ -126,6 +126,9 @@ MemoryAccounting_PrintLeakSites(HTAB *htab);
 void
 MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary);
 
+static void
+MemoryAccounting_ResetPeakBalance(void);
+
 /*****************************************************************************
  * Global memory accounting variables
  */

@@ -4574,7 +4574,7 @@ PostgresMain(int argc, char *argv[],
 		VmemTracker_ResetMaxVmemReserved();
 		MemoryAccounting_ResetPeakBalance();
 
-		if (!IsTransactionOrTransactionBlock()){
+		//if (!IsTransactionOrTransactionBlock()){
 			/* Reset memory accounting */
 
 			/*
@@ -4593,7 +4593,7 @@ PostgresMain(int argc, char *argv[],
 			MemoryAccounting_SwitchAccount(postgresMainMemoryAccount);
 
 			/* End of memory accounting setup */
-		}
+		//}
 
 		initStringInfo(&input_message);
 

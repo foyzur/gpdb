@@ -305,7 +305,7 @@ typedef struct Plan
 	uint64 operatorMemKB;
 
 	/* MemoryAccount to use for recording the memory usage of different plan nodes. */
-	MemoryAccount* memoryAccount;
+	MemoryAccountIdType memoryAccountId;
 } Plan;
 
 /* ----------------
