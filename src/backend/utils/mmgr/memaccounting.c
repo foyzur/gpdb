@@ -50,6 +50,9 @@ typedef struct MemoryAccountDeserializerCxt
 	MemoryAccount *root; /* Array of MemoryAccount [0...memoryAccountCount-1] */
 } MemoryAccountDeserializerCxt;
 
+static MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+static MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+
 /*
  ******************************************************
  * Internal methods declarations
@@ -59,13 +62,13 @@ CheckMemoryAccountingLeak(void);
 
 static void
 InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit,
-		MemoryOwnerType ownerType, MemoryAccount *parentAccount);
+		MemoryOwnerType ownerType, MemoryAccountIdType parentAccountId);
 
-static MemoryAccount*
+static MemoryAccountIdType
 CreateMemoryAccountImpl(long maxLimit,
-		MemoryOwnerType ownerType, MemoryAccount* parent);
+		MemoryOwnerType ownerType, MemoryAccountIdType parentId);
 
-typedef CdbVisitOpt (*MemoryAccountVisitor)(MemoryAccount *memoryAccount,
+typedef CdbVisitOpt (*MemoryAccountVisitor)(MemoryAccountTree *memoryAccountTreeNode,
 		void *context, const uint32 depth, uint32 parentWalkSerial,
 		uint32 curWalkSerial);
 
@@ -73,61 +76,73 @@ static void
 AdvanceMemoryAccountingGeneration(void);
 
 static void
-HandleMemoryAccountingGenerationOverflow(MemoryContext context);
-
-static void
-HandleMemoryAccountingGenerationOverflowChildren(MemoryContext context);
-
-static void
 InitMemoryAccounting(void);
 
 static CdbVisitOpt
-MemoryAccountWalkNode(MemoryAccount *memoryAccount,
+MemoryAccountTreeWalkNode(MemoryAccountTree *memoryAccountTreeNode,
 		MemoryAccountVisitor visitor, void *context, uint32 depth,
 		uint32 *totalWalked, uint32 parentWalkSerial);
 
 static CdbVisitOpt
-MemoryAccountWalkKids(MemoryAccount *memoryAccount,
+MemoryAccountTreeWalkKids(MemoryAccountTree *memoryAccountTreeNode,
 		MemoryAccountVisitor visitor, void *context, uint32 depth,
 		uint32 *totalWalked, uint32 parentWalkSerial);
 
+static void
+MemoryAccountWalkArray(MemoryAccountIdType rootId, MemoryAccountVisitor visitor,
+			        void *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial);
+
 static CdbVisitOpt
-MemoryAccountToString(MemoryAccount *memoryAccount, void *context,
+MemoryAccountToString(MemoryAccountTree *memoryAccount, void *context,
 		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
 
 static CdbVisitOpt
-SerializeMemoryAccount(MemoryAccount *memoryAccount, void *context,
+SerializeMemoryAccount(MemoryAccountTree *memoryAccountTreeNode, void *context,
 		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
 
 static CdbVisitOpt
-MemoryAccountToCSV(MemoryAccount *memoryAccount, void *context,
+MemoryAccountToCSV(MemoryAccountTree *memoryAccount, void *context,
 		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
 
 static CdbVisitOpt
-MemoryAccountToLog(MemoryAccount *memoryAccount, void *context,
+MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context,
 		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
 
 static void
 SaveMemoryBufToDisk(struct StringInfoData *memoryBuf, char *prefix);
 
-static CdbVisitOpt
-MemoryAccountDetectLeak(MemoryAccount *memoryAccount, void *context, uint32 depth,
-		uint32 parentWalkSerial, uint32 curWalkSerial);
-
-size_t*
-MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size, HTAB **htab_out);
-
 static const char*
 MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType);
 
 static void
-MemoryAccounting_PrintLeakSites(HTAB *htab);
-
-void
-MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary);
-
-static void
 MemoryAccounting_ResetPeakBalance(void);
+
+bool
+MemoryAccounting_IsValidAccount(MemoryAccountIdType id)
+{
+	return (id <= MEMORY_OWNER_TYPE_END_LONG_LIVING) || (id >= liveAccountStartId && id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount);
+}
+
+MemoryAccount*
+MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
+{
+	MemoryAccount *memoryAccount = NULL;
+	Assert(NULL != shortLivingMemoryAccountArray);
+
+	if (id >= liveAccountStartId)
+	{
+		Assert(id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount);
+		memoryAccount = shortLivingMemoryAccountArray->allAccounts[id - liveAccountStartId];
+	}
+	else if (id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
+	{
+		memoryAccount = longLivingMemoryAccountArray[id];
+	}
+
+	Assert(IsA((shortLivingMemoryAccountArray->allAccounts[id]), MemoryAccount));
+
+	return memoryAccount;
+}
 
 /*****************************************************************************
  * Global memory accounting variables
@@ -182,19 +197,6 @@ uint64 MemoryAccountingOutstandingBalance = 0;
  */
 uint64 MemoryAccountingPeakBalance = 0;
 
-/*
- * The generation of current memory accounting tree.
- * Each allocation would save this generation in its
- * header. Later on during deallocation of memory if
- * the account generation of the memory does not match
- * the current generation, then we don't attempt to
- * release accounting for memory chunk's memory account.
- * Instead we release in bulk all the live allocations'
- * accounting into the RollOverMemoryAccount during
- * generation change.
- */
-uint16 MemoryAccountingCurrentGeneration = 0;
-
 /******************************************/
 /********** Public interface **************/
 
@@ -213,11 +215,6 @@ MemoryAccounting_Reset()
 	 */
 	if (MemoryAccountTreeLogicalRoot)
 	{
-		size_t last_rollover_balance = MemoryAccounting_GetBalance(RolloverMemoryAccount);
-		size_t leak_summary_size = 0;
-		HTAB *htab = NULL;
-		size_t *leak_summary = MemoryAccounting_LeakSummary(MemoryAccountTreeLogicalRoot, &leak_summary_size, &htab);
-
 		/* No one should create child context under MemoryAccountMemoryContext */
 		Assert(MemoryAccountMemoryContext->firstchild == NULL);
 
@@ -225,123 +222,87 @@ MemoryAccounting_Reset()
 		CheckMemoryAccountingLeak();
 
 		TopMemoryAccount = NULL;
-		AlienExecutorMemoryAccount = NULL;
 
 		/* Outstanding balance will come from either the rollover or the shared chunk header account */
 		Assert((RolloverMemoryAccount->allocated - RolloverMemoryAccount->freed) +
 				(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed) ==
 				MemoryAccountingOutstandingBalance);
 		MemoryAccounting_ResetPeakBalance();
-
-		size_t rollover_balance = MemoryAccounting_GetBalance(RolloverMemoryAccount);
-
-		if (leak_detection_level != 0 && MemoryAccountingCurrentGeneration > 3 && last_rollover_balance > 0 && rollover_balance > last_rollover_balance)
-		{
-			//elog(WARNING, "Detected Leak of %" PRIu64 " (%" PRIu64 ")", rollover_balance - last_rollover_balance, rollover_balance);
-			//MemoryAccounting_PrettyPrint();
-			//MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(leak_summary);
-			MemoryAccounting_PrintLeakSites(htab);
-		}
-
-		hash_destroy(htab);
-		gp_free2(leak_summary, leak_summary_size);
 	}
 
 	InitMemoryAccounting();
 }
 
-void
-MemoryAccounting_PrettyPrintMemoryAccountLeakSummary(size_t *leak_summary)
+/*
+ * MemoryAccounting_Allocate
+ *	 	When an allocation is made, this function will be called by the
+ *	 	underlying allocator to record allocation request.
+ *
+ * memoryAccount: where to record this allocation
+ * context: the context where this memory belongs
+ * allocatedSize: the final amount of memory returned by the allocator (with overhead)
+ *
+ * If the return value is false, the underlying memory allocator should fail.
+ */
+bool
+MemoryAccounting_Allocate(MemoryAccountIdType memoryAccountId,
+		struct MemoryContextData *context, Size allocatedSize)
 {
-	MemoryContext mcxt = MemoryContextSwitchTo(MemoryAccountDebugContext);
-	StringInfoData memBuf;
-	initStringInfo(&memBuf);
+	MemoryAccount* memoryAccount = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
 
+	Assert(memoryAccount->allocated + allocatedSize >=
+			memoryAccount->allocated);
 
-	for (int i = 0 ; i < MEMORY_OWNER_TYPE_Exec_Plan_End; i++)
-	{
-		if (i != MEMORY_OWNER_TYPE_SharedChunkHeader && i != MEMORY_OWNER_TYPE_Rollover && i != MEMORY_OWNER_TYPE_MemAccount && leak_summary[i] > 0)
-		{
-			//elog(WARNING, "%s: %" PRIu64 "\n", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
-		    appendStringInfo(&memBuf, "%s => %" PRIu64 " | ", MemoryAccounting_GetOwnerName(i), leak_summary[i]);
-		}
-	}
+	memoryAccount->allocated += allocatedSize;
 
-	elog(WARNING, "Top leaking memory accounts: %s\n", memBuf.data);
+	Size held = memoryAccount->allocated -
+			memoryAccount->freed;
 
-	pfree(memBuf.data);
+	memoryAccount->peak =
+			Max(memoryAccount->peak, held);
 
-	MemoryContextSwitchTo(mcxt);
+	Assert(memoryAccount->allocated >=
+			memoryAccount->freed);
+
+	MemoryAccountingOutstandingBalance += allocatedSize;
+	MemoryAccountingPeakBalance = Max(MemoryAccountingPeakBalance, MemoryAccountingOutstandingBalance);
+
+	return true;
 }
 
-static bool
-EligibleLeak(AllocSiteInfo *info)
+/*
+ * MemoryAccounting_Free
+ *		"One" implementation of free request handler. Each memory account
+ *		can customize its free request function. When memory is deallocated,
+ *		this function will be called by the underlying allocator to record deallocation.
+ *		This function records the amount of memory freed.
+ *
+ * memoryAccount: where to record this allocation
+ * context: the context where this memory belongs
+ * allocatedSize: the final amount of memory returned by the allocator (with overhead)
+ *
+ * Note: the memoryAccount can be an invalid pointer if the generation of
+ * the allocation is different than the current generation. In such case
+ * this method would automatically select RolloverMemoryAccount, instead
+ * of accessing an invalid pointer.
+ */
+bool
+MemoryAccounting_Free(MemoryAccountIdType memoryAccountId, struct MemoryContextData *context, Size allocatedSize)
 {
-	uint64 gen_allocated_req_mask = (1 << leak_detection_ignore) - 1;
-	if ((info->gen_allocated & gen_allocated_req_mask) == gen_allocated_req_mask)
-	{
-		return true;
-	}
+	MemoryAccount* memoryAccount = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
 
-	return false;
-}
+	Assert(memoryAccount->freed +
+			allocatedSize >= memoryAccount->freed);
 
-static void
-MemoryAccounting_PrintLeakSites(HTAB *htab)
-{
-	MemoryContext mcxt = MemoryContextSwitchTo(MemoryAccountDebugContext);
+	Assert(memoryAccount->allocated >= memoryAccount->freed);
 
-	HASH_SEQ_STATUS status;
-	HTAB *hashp;
-	hash_seq_init(&status, htab);
+	memoryAccount->freed += allocatedSize;
 
-	long num_entries = hash_get_num_entries(htab);
-	AllocSiteInfo **sorted = MemoryContextAllocZero(MemoryAccountMemoryContext, sizeof(AllocSiteInfo *) * num_entries);
+	MemoryAccountingOutstandingBalance -= allocatedSize;
 
-	int eligible_entries = 0;
+	Assert(MemoryAccountingOutstandingBalance >= 0);
 
-	AllocSiteInfo *info = hash_seq_search(&status);
-
-	while (NULL != info)
-	{
-		if (EligibleLeak(info))
-		{
-			//elog(WARNING, "%s:%ld => %ld, %ld", info->file_name, info->line_no, info->alloc_count, info->alloc_size);
-			sorted[eligible_entries++] = info;
-		}
-		info = hash_seq_search(&status);
-	}
-
-	for (int i = 0; i < eligible_entries; i++)
-	{
-		for (int j = i; j < eligible_entries; j++){
-			if (sorted[i]->alloc_size < sorted[j]->alloc_size)
-			{
-				AllocSiteInfo *tempInfo = sorted[i];
-				sorted[i] = sorted[j];
-				sorted[j] = tempInfo;
-			}
-		}
-	}
-
-
-	StringInfoData memBuf;
-	initStringInfo(&memBuf);
-
-	for (int i = 0; i < Min(memory_profiler_dataset_size, eligible_entries); i++)
-	{
-		//elog(WARNING, "%s:%ld => %ld, %ld", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_count, sorted[i]->alloc_size);
-	    appendStringInfo(&memBuf, "%s:%ld => %ld | ", sorted[i]->file_name, sorted[i]->line_no, sorted[i]->alloc_size);
-	}
-
-	elog(WARNING, "Top leaking sites: %s\n", memBuf.data);
-
-	pfree(memBuf.data);
-
-	pfree(sorted);
-
-	//hash_seq_term(&status);
-	MemoryContextSwitchTo(mcxt);
+	return true;
 }
 
 /*
@@ -365,10 +326,27 @@ MemoryAccounting_ResetPeakBalance()
  * 		accounts are hierarchical, so using the tree location we will differentiate
  * 		between owners of same type (e.g., two table scan owners).
  */
-MemoryAccount*
+MemoryAccountIdType
 MemoryAccounting_CreateAccount(long maxLimitInKB, MemoryOwnerType ownerType)
 {
-	return CreateMemoryAccountImpl(maxLimitInKB * 1024, ownerType, ActiveMemoryAccount);
+	MemoryAccountIdType parentId = MEMORY_OWNER_TYPE_Undefined;
+
+	if (NULL == ActiveMemoryAccount)
+	{
+		if (ownerType == MEMORY_OWNER_TYPE_LogicalRoot)
+		{
+			parentId = MEMORY_OWNER_TYPE_Undefined;
+		}
+		else
+		{
+			parentId = MEMORY_OWNER_TYPE_LogicalRoot;
+		}
+	}
+	else
+	{
+		parentId = ActiveMemoryAccount->id;
+	}
+	return CreateMemoryAccountImpl(maxLimitInKB * 1024, ownerType, parentId);
 }
 
 /*
@@ -379,16 +357,13 @@ MemoryAccounting_CreateAccount(long maxLimitInKB, MemoryOwnerType ownerType)
  *
  * desiredAccount: The account to switch to.
  */
-MemoryAccount*
-MemoryAccounting_SwitchAccount(MemoryAccount* desiredAccount)
+MemoryAccountIdType
+MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
 {
-	/* If memory monitoring is not enabled, we only allow switching to internal accounts */
-	Assert(desiredAccount != NULL);
+	MemoryAccountIdType oldAccountId = ActiveMemoryAccountId;
 
-	MemoryAccount* oldAccount = ActiveMemoryAccount;
-
-	ActiveMemoryAccount = desiredAccount;
-	return oldAccount;
+	ActiveMemoryAccountId = desiredAccountId;
+	return oldAccountId;
 }
 
 /*
@@ -554,12 +529,10 @@ MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
  * memoryAccount: The account whose name will be generated
  */
 const char*
-MemoryAccounting_GetAccountName(MemoryAccount *memoryAccount)
+MemoryAccounting_GetAccountName(MemoryAccountIdType memoryAccountId)
 {
-
-	MemoryOwnerType ownerType = memoryAccount->ownerType;
+	MemoryOwnerType ownerType = MemoryAccounting_ConvertIdToAccount(memoryAccountId)->ownerType;
 	return MemoryAccounting_GetOwnerName(ownerType);
-
 }
 
 /*
@@ -575,7 +548,7 @@ MemoryAccounting_Serialize(StringInfoData *buffer)
 
 	cxt.memoryAccountCount = 0;
 	uint32 totalWalked = 0;
-	MemoryAccountWalkNode(MemoryAccountTreeLogicalRoot, SerializeMemoryAccount, &cxt, 0, &totalWalked, totalWalked);
+	MemoryAccountWalkArray(MEMORY_OWNER_TYPE_LogicalRoot, SerializeMemoryAccount, &cxt, 0, &totalWalked, totalWalked);
 
 	return totalWalked;
 }
@@ -597,55 +570,57 @@ MemoryAccounting_Serialize(StringInfoData *buffer)
 SerializedMemoryAccount*
 MemoryAccounting_Deserialize(const void *serializedBits, uint32 memoryAccountCount)
 {
-    /*
-     * Array pointers to different memory accounts in the buffer for indexing to expedite
-     * tree construction
-     */
-    SerializedMemoryAccount **allAccounts = (SerializedMemoryAccount**)palloc0(memoryAccountCount * sizeof(SerializedMemoryAccount*));
-    MemoryAccount **lastSeenChildren = (MemoryAccount**)palloc0(memoryAccountCount * sizeof(MemoryAccount*));
+	return NULL;
 
-    SerializedMemoryAccount *memoryAccounts = (SerializedMemoryAccount*)serializedBits;
-    for (int memAccSerial = 0; memAccSerial < memoryAccountCount; memAccSerial++)
-    {
-    	SerializedMemoryAccount *curMemoryAccount = &memoryAccounts[memAccSerial];
-    	Assert(MemoryAccountIsValid(&curMemoryAccount->memoryAccount));
-
-    	curMemoryAccount->memoryAccount.firstChild = NULL;
-    	curMemoryAccount->memoryAccount.nextSibling = NULL;
-
-    	allAccounts[curMemoryAccount->memoryAccountSerial] = curMemoryAccount;
-
-    	if (curMemoryAccount->memoryAccountSerial == curMemoryAccount->parentMemoryAccountSerial)
-    	{
-			/* Only "logical root" can be parent less */
-			Assert(curMemoryAccount->memoryAccountSerial == 0);
-
-			/* We don't need to adjust parent and sibling pointers */
-			continue;
-    	}
-
-    	SerializedMemoryAccount *parentMemoryAccount = allAccounts[curMemoryAccount->parentMemoryAccountSerial];
-        	Assert(MemoryAccountIsValid(&parentMemoryAccount->memoryAccount));
-
-        MemoryAccount *lastSeenChild = lastSeenChildren[curMemoryAccount->parentMemoryAccountSerial];
-
-        if (!lastSeenChild)
-        {
-    		parentMemoryAccount->memoryAccount.firstChild = &(curMemoryAccount->memoryAccount);
-        }
-        else
-        {
-    		lastSeenChild->nextSibling = &curMemoryAccount->memoryAccount;
-        }
-
-		lastSeenChildren[curMemoryAccount->parentMemoryAccountSerial] = &(curMemoryAccount->memoryAccount);
-		curMemoryAccount->memoryAccount.parentAccount = &(parentMemoryAccount->memoryAccount);
-    }
-
-    pfree(allAccounts);
-    pfree(lastSeenChildren);
-
-    return memoryAccounts;
+//    /*
+//     * Array pointers to different memory accounts in the buffer for indexing to expedite
+//     * tree construction
+//     */
+//    SerializedMemoryAccount **allAccounts = (SerializedMemoryAccount**)palloc0(memoryAccountCount * sizeof(SerializedMemoryAccount*));
+//    MemoryAccount **lastSeenChildren = (MemoryAccount**)palloc0(memoryAccountCount * sizeof(MemoryAccount*));
+//
+//    SerializedMemoryAccount *memoryAccounts = (SerializedMemoryAccount*)serializedBits;
+//    for (int memAccSerial = 0; memAccSerial < memoryAccountCount; memAccSerial++)
+//    {
+//    	SerializedMemoryAccount *curMemoryAccount = &memoryAccounts[memAccSerial];
+//    	Assert(MemoryAccountIsValid(&curMemoryAccount->memoryAccount));
+//
+//    	curMemoryAccount->memoryAccount.firstChild = NULL;
+//    	curMemoryAccount->memoryAccount.nextSibling = NULL;
+//
+//    	allAccounts[curMemoryAccount->memoryAccountSerial] = curMemoryAccount;
+//
+//    	if (curMemoryAccount->memoryAccountSerial == curMemoryAccount->parentMemoryAccountSerial)
+//    	{
+//			/* Only "logical root" can be parent less */
+//			Assert(curMemoryAccount->memoryAccountSerial == 0);
+//
+//			/* We don't need to adjust parent and sibling pointers */
+//			continue;
+//    	}
+//
+//    	SerializedMemoryAccount *parentMemoryAccount = allAccounts[curMemoryAccount->parentMemoryAccountSerial];
+//        	Assert(MemoryAccountIsValid(&parentMemoryAccount->memoryAccount));
+//
+//        MemoryAccount *lastSeenChild = lastSeenChildren[curMemoryAccount->parentMemoryAccountSerial];
+//
+//        if (!lastSeenChild)
+//        {
+//    		parentMemoryAccount->memoryAccount.firstChild = &(curMemoryAccount->memoryAccount);
+//        }
+//        else
+//        {
+//    		lastSeenChild->nextSibling = &curMemoryAccount->memoryAccount;
+//        }
+//
+//		lastSeenChildren[curMemoryAccount->parentMemoryAccountSerial] = &(curMemoryAccount->memoryAccount);
+//		curMemoryAccount->memoryAccount.parentAccount = &(parentMemoryAccount->memoryAccount);
+//    }
+//
+//    pfree(allAccounts);
+//    pfree(lastSeenChildren);
+//
+//    return memoryAccounts;
 }
 
 /*
@@ -658,7 +633,7 @@ MemoryAccounting_Deserialize(const void *serializedBits, uint32 memoryAccountCou
  * indentation: The indentation of the root
  */
 void
-MemoryAccounting_ToString(MemoryAccount *root, StringInfoData *str, uint32 indentation)
+MemoryAccounting_ToString(MemoryAccountIdType rootId, StringInfoData *str, uint32 indentation)
 {
 	MemoryAccountSerializerCxt cxt;
 	cxt.buffer = str;
@@ -666,32 +641,7 @@ MemoryAccounting_ToString(MemoryAccount *root, StringInfoData *str, uint32 inden
 	cxt.prefix = NULL;
 
 	uint32 totalWalked = 0;
-	MemoryAccountWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
-}
-
-size_t*
-MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size, HTAB **htab_out)
-{
-	size_t alloc_size = sizeof(size_t) * MEMORY_OWNER_TYPE_Exec_Plan_End;
-	size_t *leak_summary = gp_malloc(alloc_size);
-	memset(leak_summary, 0, alloc_size);
-
-	uint32 totalWalked = 0;
-	MemoryAccountWalkNode(root, MemoryAccountDetectLeak, leak_summary, 0, &totalWalked, totalWalked);
-
-
-	HASHCTL		ctl;
-	ctl.keysize = ALLOC_SITE_KEY_SIZE;
-	ctl.entrysize = sizeof(AllocSiteInfo);
-	ctl.hcxt = MemoryAccountDebugContext;
-
-	HTAB *htab = hash_create("Alloc Info Hash", 1000, &ctl, HASH_ELEM | HASH_CONTEXT);
-
-	MemoryContext_GetAllocationSiteForLeaks(htab, TopMemoryContext);
-
-	*ret_alloc_size = alloc_size;
-	*htab_out = htab;
-	return leak_summary;
+	MemoryAccountWalkArray(rootId, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
 }
 
 /*
@@ -704,7 +654,7 @@ MemoryAccounting_LeakSummary(MemoryAccount *root, size_t* ret_alloc_size, HTAB *
  * prefix: A common prefix for each csv line
  */
 void
-MemoryAccounting_ToCSV(MemoryAccount *root, StringInfoData *str, char *prefix)
+MemoryAccounting_ToCSV(MemoryAccountIdType rootId, StringInfoData *str, char *prefix)
 {
 	MemoryAccountSerializerCxt cxt;
 	cxt.buffer = str;
@@ -733,7 +683,7 @@ MemoryAccounting_ToCSV(MemoryAccount *root, StringInfoData *str, char *prefix)
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */,
 			MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */);
 
-	MemoryAccountWalkNode(root, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
+	MemoryAccountWalkArray(rootId, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
 }
 
 /*
@@ -747,7 +697,7 @@ MemoryAccounting_PrettyPrint()
 	StringInfoData memBuf;
 	initStringInfo(&memBuf);
 
-	MemoryAccounting_ToString(MemoryAccountTreeLogicalRoot, &memBuf, 0);
+	MemoryAccounting_ToString(MEMORY_OWNER_TYPE_LogicalRoot, &memBuf, 0);
 
 	elog(WARNING, "%s\n", memBuf.data);
 
@@ -773,7 +723,7 @@ MemoryAccounting_SaveToFile(int currentSliceId)
 		memory_profiler_run_id, memory_profiler_dataset_id, memory_profiler_query_id,
 		memory_profiler_dataset_size, statement_mem, gp_session_id, GetCurrentStatementStartTimestamp(),
 		currentSliceId, GpIdentity.segindex);
-	MemoryAccounting_ToCSV(MemoryAccountTreeLogicalRoot, &memBuf, prefix.data);
+	MemoryAccounting_ToCSV(MEMORY_OWNER_TYPE_LogicalRoot, &memBuf, prefix.data);
 	SaveMemoryBufToDisk(&memBuf, prefix.data);
 
 	pfree(prefix.data);
@@ -809,7 +759,7 @@ MemoryAccounting_SaveToLog()
     		totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */, MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */, MemoryAccountingPeakBalance /* Current */);
 
-	MemoryAccountWalkNode(MemoryAccountTreeLogicalRoot, MemoryAccountToLog, &cxt, 0, &totalWalked, totalWalked);
+    MemoryAccountWalkArray(MEMORY_OWNER_TYPE_LogicalRoot, MemoryAccountToLog, &cxt, 0, &totalWalked, totalWalked);
 
 	return totalWalked;
 }
@@ -828,8 +778,10 @@ MemoryAccounting_SaveToLog()
  * parentAccount: the parent account of this account
  */
 static void
-InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerType ownerType, MemoryAccount *parentAccount)
+InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerType ownerType, MemoryAccountIdType parentAccountId)
 {
+	Assert(ownerType != MEMORY_OWNER_TYPE_Undefined && ownerType < MEMORY_OWNER_TYPE_EXECUTOR_END);
+
 	newAccount->ownerType = ownerType;
 
 	/*
@@ -842,14 +794,16 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
 	newAccount->freed = 0;
 	newAccount->peak = 0;
 
-    newAccount->parentAccount = parentAccount;
+	if (ownerType <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
+	{
+		newAccount->id = ownerType;
+	}
+	else
+	{
+		newAccount->id = nextAccountId++;
+	}
 
-	/* We don't include sub-accounts in the main memory accounting tree */
-    if (parentAccount != NULL)
-    {
-		newAccount->nextSibling = parentAccount->firstChild;
-		parentAccount->firstChild = newAccount;
-    }
+    newAccount->parentId = parentAccountId;
 }
 
 /*
@@ -862,14 +816,16 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
  * 		between owners of same gross type (e.g., two sequential scan owners).
  * parent: The parent account of this account.
  */
-static MemoryAccount*
-CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccount* parent)
+static MemoryAccountIdType
+CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccountIdType parentId)
 {
+	Assert(liveAccountStartId > MEMORY_OWNER_TYPE_END_LONG_LIVING);
+
 	/* We don't touch the oldContext. We create all MemoryAccount in MemoryAccountMemoryContext */
     MemoryContext oldContext = NULL;
 	MemoryAccount* newAccount = NULL; /* Return value */
 	/* Used for switching temporarily to MemoryAccountMemoryAccount ownership to account for the instrumentation overhead */
-	MemoryAccount *oldAccount = NULL;
+	MemoryAccountIdType oldAccountId = MEMORY_OWNER_TYPE_Undefined;
 
 	/*
 	 * Rollover is a special MemoryAccount that resides at the
@@ -882,53 +838,44 @@ CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccount*
     if (ownerType == MEMORY_OWNER_TYPE_SharedChunkHeader || ownerType == MEMORY_OWNER_TYPE_Rollover || ownerType == MEMORY_OWNER_TYPE_MemAccount || ownerType == MEMORY_OWNER_TYPE_Top)
     {
     	/* Set the "logical root" as the parent of two top account */
-    	parent = MemoryAccountTreeLogicalRoot;
+    	parentId = MEMORY_OWNER_TYPE_LogicalRoot;
     }
 
     /*
      * Other than logical root, no long-living account should have children
      * and only logical root is allowed to have no parent
      */
-    Assert((parent == NULL && ownerType == MEMORY_OWNER_TYPE_LogicalRoot) ||
-    		(parent != RolloverMemoryAccount && parent != SharedChunkHeadersMemoryAccount &&
-    		parent != MemoryAccountMemoryAccount));
+    Assert((parentId == MEMORY_OWNER_TYPE_LogicalRoot || parentId > MEMORY_OWNER_TYPE_END_LONG_LIVING));
 
     /*
-     * Only SharedChunkHeadersMemoryAccount, Rollover, MemoryAccountMemoryAccount
-     * and Top can be under "logical root"
+     * Only SharedChunkHeadersMemoryAccount, Rollover, MemoryAccountMemoryAccount,
+     * AlienExecutorAccount and Top can be under "logical root"
      */
-    Assert(parent != MemoryAccountTreeLogicalRoot ||
-    		ownerType == MEMORY_OWNER_TYPE_LogicalRoot ||
-    		ownerType == MEMORY_OWNER_TYPE_SharedChunkHeader ||
-    		ownerType == MEMORY_OWNER_TYPE_Rollover ||
-    		ownerType == MEMORY_OWNER_TYPE_MemAccount ||
+    AssertImply(parentId == MEMORY_OWNER_TYPE_LogicalRoot, ownerType <= MEMORY_OWNER_TYPE_END_LONG_LIVING ||
     		ownerType == MEMORY_OWNER_TYPE_Top);
 
     /* Long-living accounts need TopMemoryContext */
-    if (ownerType == MEMORY_OWNER_TYPE_LogicalRoot ||
-    		ownerType == MEMORY_OWNER_TYPE_SharedChunkHeader ||
-    		ownerType == MEMORY_OWNER_TYPE_Rollover ||
-    		ownerType == MEMORY_OWNER_TYPE_MemAccount)
+    if (ownerType <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
     {
     	oldContext = MemoryContextSwitchTo(TopMemoryContext);
     }
     else
     {
     	oldContext = MemoryContextSwitchTo(MemoryAccountMemoryContext);
-        oldAccount = MemoryAccounting_SwitchAccount(MemoryAccountMemoryAccount);
+    	oldAccountId = MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_MemAccount);
     }
 
 	newAccount = makeNode(MemoryAccount);
-	InitializeMemoryAccount(newAccount, maxLimit, ownerType, parent);
+	InitializeMemoryAccount(newAccount, maxLimit, ownerType, parentId);
 
-	if (oldAccount != NULL)
+	if (oldAccountId != MEMORY_OWNER_TYPE_Undefined)
 	{
-		MemoryAccounting_SwitchAccount(oldAccount);
+		MemoryAccounting_SwitchAccount(oldAccountId);
 	}
 
     MemoryContextSwitchTo(oldContext);
 
-    return newAccount;
+    return newAccount->id;
 }
 
 
@@ -941,6 +888,74 @@ static void
 CheckMemoryAccountingLeak()
 {
 	/* Just an API. Not yet implemented. */
+}
+
+static MemoryAccountIdType
+ConvertIdToArrayIndex(MemoryAccountIdType id)
+{
+	if (id >= MEMORY_OWNER_TYPE_LogicalRoot && id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
+	{
+		return id;
+	}
+	else if (id >= liveAccountStartId && id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount)
+	{
+		return id - liveAccountStartId;
+	}
+	else if (id < liveAccountStartId)
+	{
+		return MEMORY_OWNER_TYPE_Rollover;
+	}
+
+	Assert(!"Cannot map id to array index");
+	return MEMORY_OWNER_TYPE_Undefined;
+}
+
+static void
+AddChild(MemoryAccountTree *treeArray, MemoryAccountIdType childId, MemoryAccountIdType parentId)
+{
+	MemoryAccount *childAccount = MemoryAccounting_ConvertIdToAccount(childId);
+	AssertImply(parentId == MEMORY_OWNER_TYPE_Undefined, childId == MEMORY_OWNER_TYPE_LogicalRoot);
+	Assert(parentId == MEMORY_OWNER_TYPE_Undefined || treeArray[parentId].account != NULL);
+
+	MemoryAccountIdType childArrayIndex = ConvertIdToArrayIndex(childId);
+	MemoryAccountTree *childNode = &treeArray[childArrayIndex];
+	childNode->account = childAccount;
+
+	if (childId != MEMORY_OWNER_TYPE_LogicalRoot)
+	{
+		MemoryAccountIdType parentArrayIndex = ConvertIdToArrayIndex(parentId);
+		MemoryAccountTree *parentNode = &treeArray[parentArrayIndex];
+		childNode->nextSibling = parentNode->firstChild;
+		parentNode->firstChild = childNode;
+	}
+}
+
+static MemoryAccountTree*
+ConvertMemoryAccountArrayToTree()
+{
+	// caller is in charge to free
+	MemoryAccountTree *treeArray = MemoryContextAllocZero(MemoryAccountMemoryContext, sizeof(MemoryAccountTree) *
+			(shortLivingMemoryAccountArray->accountCount + MEMORY_OWNER_TYPE_END_LONG_LIVING));
+
+	for (MemoryAccountIdType longIdx = MEMORY_OWNER_TYPE_LogicalRoot; longIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longIdx++)
+	{
+		MemoryAccount *longLivingAccount = MemoryAccounting_ConvertIdToAccount(longIdx);
+		AddChild(treeArray, longLivingAccount->id, longLivingAccount->parentId);
+	}
+
+	for (int i = 0; i < shortLivingMemoryAccountArray->accountCount; i++)
+	{
+		MemoryAccount* shortLivingAccount = shortLivingMemoryAccountArray->allAccounts[i];
+		AddChild(treeArray, shortLivingAccount->id, shortLivingAccount->parentId);
+	}
+
+	return treeArray;
+}
+
+static MemoryAccountTree *
+FindAccountLogicalRoot(MemoryAccountTree *treeArray)
+{
+	return &treeArray[MEMORY_OWNER_TYPE_LogicalRoot];
 }
 
 /**
@@ -961,24 +976,24 @@ CheckMemoryAccountingLeak()
  * agnostic representation of the tree.
  */
 static CdbVisitOpt
-MemoryAccountWalkNode(MemoryAccount *memoryAccount, MemoryAccountVisitor visitor,
+MemoryAccountTreeWalkNode(MemoryAccountTree *memoryAccountTreeNode, MemoryAccountVisitor visitor,
 			        void *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial)
 {
     CdbVisitOpt     whatnext;
 
-    if (memoryAccount == NULL)
+    if (memoryAccountTreeNode == NULL)
     {
         whatnext = CdbVisit_Walk;
     }
     else
     {
     	uint32 curWalkSerial = *totalWalked;
-        whatnext = visitor(memoryAccount, context, depth, parentWalkSerial, *totalWalked);
+        whatnext = visitor(memoryAccountTreeNode, context, depth, parentWalkSerial, *totalWalked);
         *totalWalked = *totalWalked + 1;
 
         if (whatnext == CdbVisit_Walk)
         {
-            whatnext = MemoryAccountWalkKids(memoryAccount, visitor, context, depth + 1, totalWalked, curWalkSerial);
+            whatnext = MemoryAccountTreeWalkKids(memoryAccountTreeNode, visitor, context, depth + 1, totalWalked, curWalkSerial);
         }
         else if (whatnext == CdbVisit_Skip)
         {
@@ -1005,22 +1020,31 @@ MemoryAccountWalkNode(MemoryAccount *memoryAccount, MemoryAccountVisitor visitor
  * agnostic representation of the tree.
  */
 static CdbVisitOpt
-MemoryAccountWalkKids(MemoryAccount      *memoryAccount,
+MemoryAccountTreeWalkKids(MemoryAccountTree *memoryAccountTreeNode,
 			        MemoryAccountVisitor visitor,
 			        void           *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial)
 {
-    if (memoryAccount == NULL)
+    if (memoryAccountTreeNode == NULL)
         return CdbVisit_Walk;
 
     /* Traverse children accounts */
-    for (MemoryAccount *child = memoryAccount->firstChild; child != NULL; child = child->nextSibling)
+    for (MemoryAccountTree *child = memoryAccountTreeNode->firstChild; child != NULL; child = child->nextSibling)
     {
-    	MemoryAccountWalkNode(child, visitor, context, depth, totalWalked, parentWalkSerial);
+    	MemoryAccountTreeWalkNode(child, visitor, context, depth, totalWalked, parentWalkSerial);
     }
 
     return CdbVisit_Walk;
 }
 
+static void
+MemoryAccountWalkArray(MemoryAccountIdType rootId, MemoryAccountVisitor visitor,
+			        void *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial)
+{
+    MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree();
+	MemoryAccountTreeWalkNode(&tree[ConvertIdToArrayIndex(rootId)], MemoryAccountToLog, context, 0, &totalWalked, totalWalked);
+	pfree(tree);
+
+}
 /**
  * MemoryAccountToString:
  * 		A visitor function that can convert a memory account to string.
@@ -1036,10 +1060,12 @@ MemoryAccountWalkKids(MemoryAccount      *memoryAccount,
  * 		of the uniform "walker" function prototype
  */
 static CdbVisitOpt
-MemoryAccountToString(MemoryAccount *memoryAccount, void *context, uint32 depth,
+MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, uint32 depth,
 		uint32 parentWalkSerial, uint32 curWalkSerial)
 {
-	if (memoryAccount == NULL) return CdbVisit_Walk;
+	if (memoryAccountTreeNode == NULL) return CdbVisit_Walk;
+
+	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
 	MemoryAccountSerializerCxt *memAccountCxt = (MemoryAccountSerializerCxt*) context;
 
@@ -1051,18 +1077,6 @@ MemoryAccountToString(MemoryAccount *memoryAccount, void *context, uint32 depth,
 		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
 
     memAccountCxt->memoryAccountCount++;
-
-    return CdbVisit_Walk;
-}
-
-static CdbVisitOpt
-MemoryAccountDetectLeak(MemoryAccount *memoryAccount, void *context, uint32 depth,
-		uint32 parentWalkSerial, uint32 curWalkSerial)
-{
-	if (memoryAccount == NULL) return CdbVisit_Walk;
-
-	size_t *leak_summary = (size_t*) context;
-	leak_summary[memoryAccount->ownerType] += MemoryAccounting_GetBalance(memoryAccount);
 
     return CdbVisit_Walk;
 }
@@ -1080,9 +1094,11 @@ MemoryAccountDetectLeak(MemoryAccount *memoryAccount, void *context, uint32 dept
  * curWalkSerial: current node's "walk serial"
  */
 static CdbVisitOpt
-MemoryAccountToCSV(MemoryAccount *memoryAccount, void *context, uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial)
+MemoryAccountToCSV(MemoryAccountTree *memoryAccountTreeNode, void *context, uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial)
 {
-	if (memoryAccount == NULL) return CdbVisit_Walk;
+	if (memoryAccountTreeNode == NULL) return CdbVisit_Walk;
+
+	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
 	MemoryAccountSerializerCxt *memAccountCxt = (MemoryAccountSerializerCxt*) context;
 
@@ -1116,18 +1132,20 @@ MemoryAccountToCSV(MemoryAccount *memoryAccount, void *context, uint32 depth, ui
  * curWalkSerial: current node's "walk serial"
  */
 static CdbVisitOpt
-MemoryAccountToLog(MemoryAccount *memoryAccount, void *context, uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial)
+MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial)
 {
-	if (memoryAccount == NULL) return CdbVisit_Walk;
+	if (memoryAccountTreeNode == NULL) return CdbVisit_Walk;
 
 	MemoryAccountSerializerCxt *memAccountCxt = (MemoryAccountSerializerCxt*) context;
+
+	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
     write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", MemoryAccounting_GetAccountName(memoryAccount),
     		curWalkSerial /* Child walk serial */, parentWalkSerial /* Parent walk serial */,
 			(int64) memoryAccount->maxLimit /* Quota */,
-	memoryAccount->peak /* Peak */,
-	memoryAccount->allocated /* Allocated */,
-	memoryAccount->freed /* Freed */, (memoryAccount->allocated - memoryAccount->freed) /* Current */);
+			memoryAccount->peak /* Peak */,
+			memoryAccount->allocated /* Allocated */,
+			memoryAccount->freed /* Freed */, (memoryAccount->allocated - memoryAccount->freed) /* Current */);
     memAccountCxt->memoryAccountCount++;
 
     return CdbVisit_Walk;
@@ -1145,10 +1163,12 @@ MemoryAccountToLog(MemoryAccount *memoryAccount, void *context, uint32 depth, ui
  * curWalkSerial: current node's "walk serial"
  */
 static CdbVisitOpt
-SerializeMemoryAccount(MemoryAccount *memoryAccount, void *context, uint32 depth,
+SerializeMemoryAccount(MemoryAccountTree *memoryAccountTreeNode, void *context, uint32 depth,
 		uint32 parentWalkSerial, uint32 curWalkSerial)
 {
-	if (memoryAccount == NULL) return CdbVisit_Walk;
+	if (memoryAccountTreeNode == NULL) return CdbVisit_Walk;
+
+	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
 	Assert(MemoryAccountIsValid(memoryAccount));
 
@@ -1177,7 +1197,6 @@ static void
 InitMemoryAccounting()
 {
 	Assert(TopMemoryAccount == NULL);
-	Assert(AlienExecutorMemoryAccount == NULL);
 
 	/*
 	 * Order of creation:
@@ -1226,8 +1245,10 @@ InitMemoryAccounting()
 		 * All the long living accounts are created together, so if logical root
 		 * is null, then other long-living accounts should be the null too
 		 */
-		Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL);
-		Assert(TopMemoryAccount == NULL && MemoryAccountMemoryAccount == NULL && MemoryAccountMemoryContext == NULL);
+		Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL &&
+				MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
+
+		Assert(TopMemoryAccount == NULL && MemoryAccountMemoryContext == NULL);
 
 		MemoryAccountTreeLogicalRoot = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_LogicalRoot);
 
@@ -1237,15 +1258,11 @@ InitMemoryAccounting()
 
 		MemoryAccountMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MemAccount);
 
+		AlienExecutorMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_AlienShared);
+
 		/* Now initiate the memory accounting system. */
 		MemoryAccountMemoryContext = AllocSetContextCreate(TopMemoryContext,
 											 "MemoryAccountMemoryContext",
-											 ALLOCSET_DEFAULT_MINSIZE,
-											 ALLOCSET_DEFAULT_INITSIZE,
-											 ALLOCSET_DEFAULT_MAXSIZE);
-
-		MemoryAccountDebugContext = AllocSetContextCreate(TopMemoryContext,
-											 "MemoryAccountDebugContext",
 											 ALLOCSET_DEFAULT_MINSIZE,
 											 ALLOCSET_DEFAULT_INITSIZE,
 											 ALLOCSET_DEFAULT_MAXSIZE);
@@ -1261,36 +1278,14 @@ InitMemoryAccounting()
 	{
 		/* Long-living setup is already done, so re-initialize those */
 		/* If "logical root" is pre-existing, "rollover" should also be pre-existing */
-		Assert(MemoryAccountTreeLogicalRoot->nextSibling == NULL &&
-				RolloverMemoryAccount != NULL && SharedChunkHeadersMemoryAccount != NULL &&
-				MemoryAccountMemoryAccount != NULL);
+		Assert(RolloverMemoryAccount != NULL && SharedChunkHeadersMemoryAccount != NULL &&
+				MemoryAccountMemoryAccount != NULL && AlienExecutorMemoryAccount != NULL);
 
 		/* Ensure tree integrity */
-		Assert(MemoryAccountMemoryAccount->firstChild == NULL &&
-				SharedChunkHeadersMemoryAccount->firstChild == NULL &&
-				RolloverMemoryAccount->firstChild == NULL);
-
-		/*
-		 * First child of MemoryAccountTreeLogicalRoot should be Top, which
-		 * had been obliterated during MemoryAccountMemoryContextReset. So,
-		 * we don't attempt to verify the first child of MeomryAccountTreeLogicalRoot
-		 */
-		Assert(MemoryAccountMemoryAccount->nextSibling == RolloverMemoryAccount &&
-				RolloverMemoryAccount->nextSibling == SharedChunkHeadersMemoryAccount &&
-				SharedChunkHeadersMemoryAccount->nextSibling == NULL);
-
-		/*
-		 * We will loose previous TopMemoryAccount during InitMemoryAccounting. So,
-		 * we need to readjust the "logical root" children pointers.
-		 */
-	 	MemoryAccountTreeLogicalRoot->firstChild = MemoryAccountMemoryAccount;
-	 	MemoryAccountMemoryAccount->nextSibling = RolloverMemoryAccount;
-	 	RolloverMemoryAccount->nextSibling = SharedChunkHeadersMemoryAccount;
-	 	SharedChunkHeadersMemoryAccount->nextSibling = NULL;
-	 	RolloverMemoryAccount->firstChild = NULL;
-	 	SharedChunkHeadersMemoryAccount->firstChild = NULL;
-
-	 	MemoryContextReset(MemoryAccountDebugContext);
+		Assert(MemoryAccountMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot &&
+				SharedChunkHeadersMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot &&
+				RolloverMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot &&
+				AlienExecutorMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot);
 	}
 
 	TopMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Top);
@@ -1298,6 +1293,14 @@ InitMemoryAccounting()
 	ActiveMemoryAccount = TopMemoryAccount;
 
 	AlienExecutorMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_AlienShared);
+}
+
+static void
+ClearAccount(MemoryAccount* memoryAccount)
+{
+	memoryAccount->allocated = 0;
+	memoryAccount->freed = 0;
+	memoryAccount->peak = 0;
 }
 
 /*
@@ -1316,17 +1319,17 @@ AdvanceMemoryAccountingGeneration()
 	 */
 	ActiveMemoryAccount = RolloverMemoryAccount;
 	MemoryContextReset(MemoryAccountMemoryContext);
-	Assert(MemoryAccountMemoryAccount->allocated == MemoryAccountMemoryAccount->freed &&
-			MemoryAccountMemoryAccount->firstChild == NULL);
+	Assert(MemoryAccountMemoryAccount->allocated == MemoryAccountMemoryAccount->freed);
 
 	/*
 	 * Reset MemoryAccountMemoryAccount so that one query doesn't take the blame
 	 * of another query. Note, this is different than RolloverMemoryAccount,
 	 * whose purpose is to carry balance between multiple reset
 	 */
-	MemoryAccountMemoryAccount->allocated = 0;
-	MemoryAccountMemoryAccount->freed = 0;
-	MemoryAccountMemoryAccount->peak = 0;
+	ClearAccount(MemoryAccountMemoryAccount);
+
+	/* Reset AlienExecutorMemoryAccount balance */
+	ClearAccount(AlienExecutorMemoryAccount);
 
 	/* Everything except the SharedChunkHeadersMemoryAccount rolls over */
 	RolloverMemoryAccount->allocated = (MemoryAccountingOutstandingBalance -
@@ -1340,64 +1343,11 @@ AdvanceMemoryAccountingGeneration()
 	 */
 	RolloverMemoryAccount->peak = Max(RolloverMemoryAccount->peak, MemoryAccountingPeakBalance);
 
-	uint16 prevGeneration = MemoryAccountingCurrentGeneration;
-	MemoryAccountingCurrentGeneration = MemoryAccountingCurrentGeneration + 1;
-
-	if (prevGeneration > MemoryAccountingCurrentGeneration)
-	{
-		/* Overflow happened, we need to adjust for generation */
-		elog(LOG, "Migrating all allocated memory chunks to generation %u due to generation counter exhaustion and QE recycling", MemoryAccountingCurrentGeneration);
-		HandleMemoryAccountingGenerationOverflow(TopMemoryContext);
-	}
+	liveAccountStartId = nextAccountId;
 
 	Assert((RolloverMemoryAccount->allocated - RolloverMemoryAccount->freed) == (MemoryAccountingOutstandingBalance -
 			(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed)));
 	Assert(RolloverMemoryAccount->peak >= MemoryAccountingPeakBalance);
-}
-
-/*
- * HandleMemoryAccountingGenerationOverflow
- * 		Descends the memory context tree rooted at "context" and calls update_generation
- * 		on each context. The update_generation is supposed to look for every active chunks
- * 		and set their ownership to RolloverAccount.The update_generation method will also
- * 		set the generation of every active chunk to MemoryAccountingCurrentGeneration.
- *
- * Parameters:
- * 		context: The memory context whose children will be descended
- */
-static void
-HandleMemoryAccountingGenerationOverflow(MemoryContext context)
-{
-	AssertArg(MemoryContextIsValid(context));
-
-	/* save a function call in common case where there are no children */
-	if (context->firstchild != NULL)
-	{
-		HandleMemoryAccountingGenerationOverflowChildren(context);
-	}
-
-	(*context->methods.update_generation) (context);
-}
-
-/*
- * HandleMemoryAccountingGenerationOverflowChildren
- * 		Companion method for HandleMemoryAccountingGenerationOverflow(). Used for
- * 		walking the memory context tree.
- *
- * Parameters:
- * 		context: The memory context whose children will be descended
- */
-static void
-HandleMemoryAccountingGenerationOverflowChildren(MemoryContext context)
-{
-	MemoryContext child;
-
-	AssertArg(MemoryContextIsValid(context));
-
-	for (child = context->firstchild; child != NULL; child = child->nextchild)
-	{
-		HandleMemoryAccountingGenerationOverflow(child);
-	}
 }
 
 /*

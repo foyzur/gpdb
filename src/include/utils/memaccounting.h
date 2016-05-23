@@ -75,11 +75,13 @@ typedef enum MemoryOwnerType
 	MEMORY_OWNER_TYPE_SharedChunkHeader,
 	MEMORY_OWNER_TYPE_Rollover,
 	MEMORY_OWNER_TYPE_MemAccount,
-	MEMORY_OWNER_TYPE_END_LONG_LIVING = MEMORY_OWNER_TYPE_MemAccount,
+	MEMORY_OWNER_TYPE_Exec_AlienShared,
+	MEMORY_OWNER_TYPE_END_LONG_LIVING = MEMORY_OWNER_TYPE_Exec_AlienShared,
 	/* End of long-living accounts */
 
 	/* Short-living accounts */
-	MEMORY_OWNER_TYPE_Top,
+	MEMORY_OWNER_TYPE_START_SHORT_LIVING,
+	MEMORY_OWNER_TYPE_Top = MEMORY_OWNER_TYPE_START_SHORT_LIVING,
 	MEMORY_OWNER_TYPE_MainEntry,
 	MEMORY_OWNER_TYPE_Parser,
 	MEMORY_OWNER_TYPE_Planner,
@@ -129,7 +131,6 @@ typedef enum MemoryOwnerType
 	MEMORY_OWNER_TYPE_Exec_SplitUpdate,
 	MEMORY_OWNER_TYPE_Exec_RowTrigger,
 	MEMORY_OWNER_TYPE_Exec_AssertOp,
-	MEMORY_OWNER_TYPE_Exec_AlienShared,
 	MEMORY_OWNER_TYPE_Exec_BitmapTableScan,
 	MEMORY_OWNER_TYPE_Exec_PartitionSelector,
 	MEMORY_OWNER_TYPE_EXECUTOR_END = MEMORY_OWNER_TYPE_Exec_PartitionSelector,
@@ -149,20 +150,18 @@ typedef enum MemoryOwnerType
 struct MemoryAccount;
 struct MemoryAccountArray;
 
-extern struct MemoryAccount* ActiveMemoryAccount;
-extern struct MemoryAccount* RolloverMemoryAccount;
-extern struct MemoryAccount* AlienExecutorMemoryAccount;
 extern struct MemoryAccount* SharedChunkHeadersMemoryAccount;
 
 extern uint64 MemoryAccountingOutstandingBalance;
 extern uint64 MemoryAccountingPeakBalance;
 
-extern uint16 MemoryAccountingCurrentGeneration;
-
 typedef uint64 MemoryAccountIdType;
 
 // Array of accounts available
-extern struct MemoryAccountArray* memoryAccountArray;
+extern struct MemoryAccountArray* shortLivingMemoryAccountArray;
+extern struct MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING];
+
+extern MemoryAccountIdType ActiveMemoryAccountId;
 
 /* MemoryAccount is the fundamental data structure to record memory usage */
 typedef struct MemoryAccount {
@@ -182,8 +181,15 @@ typedef struct MemoryAccount {
 	MemoryAccountIdType parentId;
 } MemoryAccount;
 
+typedef struct MemoryAccountTree {
+	MemoryAccount *account;
+	MemoryAccount *firstChild;
+	MemoryAccount *nextSibling;
+} MemoryAccountTree;
+
 typedef struct MemoryAccountArray{
 	MemoryAccountIdType accountCount;
+	MemoryAccountIdType arraySize;
 	// array of pointers to memory accounts of size accountCount
 	MemoryAccount** allAccounts;
 } MemoryAccountArray;
@@ -216,17 +222,14 @@ typedef struct SerializedMemoryAccount {
  */
 #define START_MEMORY_ACCOUNT(newMemoryAccountId)  \
 	do { \
-		MemoryAccount *oldActiveMemoryAccount = NULL; \
-		Assert(NULL != memoryAccountArray); \
-		Assert(newMemoryAccountId < memoryAccountArray->accountCount); \
-		oldActiveMemoryAccount = ActiveMemoryAccount; \
-		ActiveMemoryAccount = memoryAccountArray[newMemoryAccountId];\
+		MemoryAccountIdType oldActiveMemoryAccountId = ActiveMemoryAccountId; \
+		ActiveMemoryAccountId = newMemoryAccountId; \
 /*
  * END_MEMORY_ACCOUNT would restore the previous memory account that was
  * active at the time of START_MEMORY_ACCCOUNT call
  */
 #define END_MEMORY_ACCOUNT()  \
-		ActiveMemoryAccount = oldActiveMemoryAccount;\
+		ActiveMemoryAccountId = oldActiveMemoryAccountId;\
 	} while (0);
 
 /*
@@ -239,7 +242,7 @@ typedef struct SerializedMemoryAccount {
 #define CREATE_EXECUTOR_MEMORY_ACCOUNT(isAlienPlanNode, planNode, NodeType) \
 		(MEMORY_OWNER_TYPE_Undefined != planNode->memoryAccountId) ?\
 			planNode->memoryAccountId : \
-			(isAlienPlanNode ? AlienExecutorMemoryAccount->id : \
+			(isAlienPlanNode ? MEMORY_OWNER_TYPE_Exec_AlienShared : \
 				MemoryAccounting_CreateAccount(((Plan*)node)->operatorMemKB == 0 ? \
 				work_mem : ((Plan*)node)->operatorMemKB, MEMORY_OWNER_TYPE_Exec_##NodeType));
 
@@ -249,7 +252,7 @@ typedef struct SerializedMemoryAccount {
  */
 #define SAVE_EXECUTOR_MEMORY_ACCOUNT(execState, curMemoryAccountId)\
 		Assert(MEMORY_OWNER_TYPE_Undefined == ((PlanState *)execState)->plan->memoryAccountId || \
-		MEMORY_OWNER_TYPE_Undefined == ((PlanState *)execState)->plan->memoryAccount || \
+		MEMORY_OWNER_TYPE_Undefined == ((PlanState *)execState)->plan->memoryAccountId || \
 		curMemoryAccountId == ((PlanState *)execState)->plan->memoryAccountId);\
 		((PlanState *)execState)->plan->memoryAccountId = curMemoryAccountId;
 
@@ -261,6 +264,16 @@ MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId);
 
 extern void
 MemoryAccounting_Reset(void);
+
+extern MemoryAccount*
+MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id);
+
+extern bool
+MemoryAccounting_Allocate(MemoryAccountIdType memoryAccountId,
+		struct MemoryContextData *context, Size allocatedSize);
+
+extern bool
+MemoryAccounting_Free(MemoryAccountIdType memoryAccountId, struct MemoryContextData *context, Size allocatedSize);
 
 extern uint32
 MemoryAccounting_Serialize(StringInfoData* buffer);
@@ -276,7 +289,7 @@ extern uint64
 MemoryAccounting_GetBalance(MemoryAccount *memoryAccount);
 
 extern void
-MemoryAccounting_ToString(MemoryAccount *root, StringInfoData *str,
+MemoryAccounting_ToString(MemoryAccountIdType rootId, StringInfoData *str,
 		uint32 indentation);
 
 extern void
@@ -289,15 +302,20 @@ extern const char*
 MemoryAccounting_GetAccountName(MemoryAccountIdType memoryAccountId);
 
 extern void
-MemoryAccounting_ToCSV(MemoryAccount *root, StringInfoData *str, char *prefix);
+MemoryAccounting_ToCSV(MemoryAccountIdType rootId, StringInfoData *str, char *prefix);
 
 extern void
 MemoryAccounting_PrettyPrint(void);
+
+extern bool
+MemoryAccounting_IsValidAccount(MemoryAccountIdType id);
+
+
 /*
  * MemoryAccountIsValid
  *		True iff memory account is valid.
  */
-#define MemoryAccountIsValid(memoryAccount) \
+#define MemoryAccountIdIsValid(memoryAccount) \
 	((memoryAccount) != NULL && \
 	 ( IsA((memoryAccount), MemoryAccount) ))
 

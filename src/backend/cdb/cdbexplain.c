@@ -802,7 +802,7 @@ cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ct
     si->workmemused     = instr->workmemused;
     si->workmemwanted   = instr->workmemwanted;
     si->workfileCreated  = instr->workfileCreated;
-	si->peakMemBalance	 = MemoryAccounting_GetPeak(planstate->memoryAccount);
+	si->peakMemBalance	 = MemoryAccounting_GetPeak(planstate->plan->memoryAccountId);
 	si->firststart      = instr->firststart;
 	si->numPartScanned = instr->numPartScanned;
 }                               /* cdbexplain_collectStatsFromNode */
@@ -1064,8 +1064,8 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
          */
         if (peakmemused.agg.vmax > 1.05 * cdbexplain_agg_avg(&peakmemused.agg))
             cdbexplain_depStatAcc_saveText(&peakmemused, ctx->extratextbuf, &saved);
-		
-        /*
+
+		/*
          * One worker which produced the greatest number of output rows.
          * (Always give at least one node a chance to have its extra message
          * text seen.  In case no node stood out above the others, make a
