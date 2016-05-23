@@ -52,15 +52,7 @@ static inline bool AllocSizeIsValid(Size sz)
 typedef struct SharedChunkHeader
 {
 	MemoryContext context;		/* owning context */
-	struct MemoryAccount* memoryAccount; /* Which account to charge for this memory. */
-	/*
-	 * The generation of "memoryAccount" pointer. If the generation
-	 * is not equal to current memory account generation
-	 * (MemoryAccountingCurrentGeneration), we do not
-	 * release accounting through "memoryAccount". Instead, we
-	 * release the accounting of RolloverMemoryAccount.
-	 */
-	uint16 memoryAccountGeneration;
+	MemoryAccountIdType memoryAccountId; /* Which account to charge for this memory. */
 
 	/* Combined balance of all the chunks that are sharing this header */
 	int64 balance;

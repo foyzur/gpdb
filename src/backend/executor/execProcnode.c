@@ -221,7 +221,7 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	int origSliceIdInPlan = estate->currentSliceIdInPlan;
 	int origExecutingSliceId = estate->currentExecutingSliceId;
 
-	MemoryAccount* curMemoryAccount = NULL;
+	MemoryAccountIdType curMemoryAccount = MEMORY_OWNER_TYPE_Undefined;
 
 	void* CodegenManager = CodeGeneratorManagerCreate("execProcnode");
 	START_CODE_GENERATOR_MANAGER(CodegenManager);
@@ -817,7 +817,7 @@ ExecProcNode(PlanState *node)
 
 	START_CODE_GENERATOR_MANAGER(node->CodegenManager);
 	{
-	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
+	START_MEMORY_ACCOUNT(node->plan->memoryAccountId);
 	{
 
 #ifndef WIN32
@@ -1264,7 +1264,7 @@ MultiExecProcNode(PlanState *node)
 
 	Assert(NULL != node->plan);
 
-	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
+	START_MEMORY_ACCOUNT(node->plan->memoryAccountId);
 	{
 		PG_TRACE5(execprocnode__enter, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
 
