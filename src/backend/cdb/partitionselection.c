@@ -26,15 +26,15 @@
  * ----------------------------------------------------------------
  */
 static int32
-eval_propagation_expression(PartitionSelectorState *node, Oid part_oid)
+eval_propagation_expression(PartitionSelectorState *node, Oid part_oid, bool *isNull)
 {
 	ExprState *propagationExprState = node->propagationExprState;
 
 	ExprContext *econtext = node->ps.ps_ExprContext;
 	ResetExprContext(econtext);
-	bool isNull = false;
+	*isNull = false;
 	ExprDoneCond isDone = ExprSingleResult;
-	Datum result = ExecEvalExpr(propagationExprState, econtext, &isNull, &isDone);
+	Datum result = ExecEvalExpr(propagationExprState, econtext, isNull, &isDone);
 	return DatumGetInt32(result);
 }
 
@@ -538,9 +538,13 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 				{
 					if (!list_member_oid(selparts->partOids, partConstraint->pRule->parchildrelid))
 					{
-						selparts->partOids = lappend_oid(selparts->partOids, partConstraint->pRule->parchildrelid);
-						int scanId = eval_propagation_expression(node, partConstraint->pRule->parchildrelid);
-						selparts->scanIds = lappend_int(selparts->scanIds, scanId);
+						bool isNull = false;
+						int scanId = eval_propagation_expression(node, partConstraint->pRule->parchildrelid, &isNull);
+						if (!isNull)
+						{
+							selparts->partOids = lappend_oid(selparts->partOids, partConstraint->pRule->parchildrelid);
+							selparts->scanIds = lappend_int(selparts->scanIds, scanId);
+						}
 					}
 				}
 				else
