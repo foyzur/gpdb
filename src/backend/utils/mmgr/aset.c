@@ -484,7 +484,7 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		if (chunk->sharedHeader->memoryAccount != NULL)
 		{
 			MemoryAccounting_Free(chunk->sharedHeader->memoryAccount,
-				chunk->sharedHeader->memoryAccountGeneration, (MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+				chunk->sharedHeader->memoryAccountGeneration, chunk->size + ALLOC_CHUNKHDRSZ);
 
 			if (chunk->sharedHeader->balance == 0)
 			{
@@ -536,7 +536,7 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 * negative balance for SharedChunkMemoryAccount.
 		 */
 		MemoryAccounting_Free(SharedChunkHeadersMemoryAccount,
-			MemoryAccountingCurrentGeneration, (MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccountingCurrentGeneration, chunk->size + ALLOC_CHUNKHDRSZ);
 	}
 
 #ifdef CDB_PALLOC_TAGS
@@ -630,8 +630,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 			desiredHeader->balance += (chunk->size + ALLOC_CHUNKHDRSZ);
 			chunk->sharedHeader = desiredHeader;
 
-			MemoryAccounting_Allocate(ActiveMemoryAccount,
-				(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(ActiveMemoryAccount, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 		else
 		{
@@ -675,8 +674,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 */
 		if (SharedChunkHeadersMemoryAccount != NULL)
 		{
-			MemoryAccounting_Allocate(SharedChunkHeadersMemoryAccount,
-					(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(SharedChunkHeadersMemoryAccount, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 
 		/*
@@ -922,7 +920,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 	{
 		Assert(curHeader->balance > 0);
 		MemoryAccounting_Free(curHeader->memoryAccount,
-				curHeader->memoryAccountGeneration, context, curHeader->balance);
+				curHeader->memoryAccountGeneration, curHeader->balance);
 
 		AllocChunk chunk = AllocPointerGetChunk(curHeader);
 
@@ -934,7 +932,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 	 * to release accounting for the shared headers
 	 */
 	MemoryAccounting_Free(SharedChunkHeadersMemoryAccount,
-		MemoryAccountingCurrentGeneration, context, sharedHeaderMemoryOverhead);
+		MemoryAccountingCurrentGeneration, sharedHeaderMemoryOverhead);
 
 	/*
 	 * Wipe off the sharedHeaderList. We don't free any memory here,
