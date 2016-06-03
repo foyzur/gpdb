@@ -478,3 +478,25 @@ void gp_free(void *user_pointer)
 	free(malloc_pointer);
 	VmemTracker_ReleaseVmem(UserPtrSizeToVmemPtrSize(usable_size));
 }
+
+extern bool
+MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount, Size allocatedSize) __attribute__((always_inline));
+
+extern bool
+MemoryAccounting_Free(struct MemoryAccount* memoryAccount, uint16 memoryAccountGeneration,
+		Size allocatedSize) __attribute__((always_inline));
+
+void* gp_accounted_alloc(int64 sz)
+{
+	/*
+	 * This is an external facing allocator, and shouldn't be called
+	 * until memory protection is enabled
+	 */
+	Assert(gp_mp_inited);
+	void* ptr = gp_alloc(sz);
+	Assert(NULL != ptr);
+
+	Assert(NULL != ActiveMemoryAccount);
+
+	MemoryAccounting_Allocate(ActiveMemoryAccount, UserPtr_GetVmemPtrSize(ptr));
+}
