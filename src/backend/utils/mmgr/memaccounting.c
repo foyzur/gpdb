@@ -22,6 +22,7 @@
 #include "utils/vmem_tracker.h"
 
 #define MEMORY_REPORT_FILE_NAME_LENGTH 255
+#define SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN 64
 
 /* Saves serializer context info during walking the memory account tree */
 typedef struct MemoryAccountSerializerCxt
@@ -770,6 +771,47 @@ MemoryAccounting_SaveToLog()
 /*****************************************************************************
  *	  PRIVATE ROUTINES FOR MEMORY ACCOUNTING								 *
  *****************************************************************************/
+static void
+InitShortLivingMemoryAccountArray()
+{
+	Assert(NULL == shortLivingMemoryAccountArray);
+	Assert(NULL != MemoryAccountMemoryContext && MemoryAccountMemoryAccount != NULL);
+
+    MemoryContext oldContext = MemoryContextSwitchTo(MemoryAccountMemoryContext);
+    MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_MemAccount);
+
+	shortLivingMemoryAccountArray = palloc0(sizeof(MemoryAccountArray));
+	shortLivingMemoryAccountArray->accountCount = 0;
+	shortLivingMemoryAccountArray->allAccounts = (MemoryAccount**) palloc0(SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN * sizeof(MemoryAccount*));
+	shortLivingMemoryAccountArray->arraySize = SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN;
+
+	MemoryAccounting_SwitchAccount(oldAccountId);
+    MemoryContextSwitchTo(oldContext);
+}
+
+static void
+AddToShortLivingAccountArray(MemoryAccount *newAccount)
+{
+	Assert(shortLivingMemoryAccountArray->accountCount == newAccount->id - liveAccountStartId);
+	MemoryAccountIdType arraySize = shortLivingMemoryAccountArray->arraySize;
+	MemoryAccountIdType needAtleast = shortLivingMemoryAccountArray->accountCount + 1;
+
+	/* If we need more entries in the array, resize the array */
+	if (arraySize < needAtleast)
+	{
+		MemoryAccountIdType newArraySize = arraySize * 2;
+		shortLivingMemoryAccountArray->allAccounts = repalloc(shortLivingMemoryAccountArray->allAccounts,
+				sizeof(MemoryAccount*) * newArraySize);
+		shortLivingMemoryAccountArray->arraySize = newArraySize;
+
+		memset(&shortLivingMemoryAccountArray->allAccounts[shortLivingMemoryAccountArray->accountCount + 1], 0,
+			(shortLivingMemoryAccountArray->arraySize - shortLivingMemoryAccountArray->accountCount) * sizeof(MemoryAccount*));
+	}
+
+	Assert(shortLivingMemoryAccountArray->arraySize > shortLivingMemoryAccountArray->accountCount);
+	Assert(NULL == shortLivingMemoryAccountArray->allAccounts[shortLivingMemoryAccountArray->accountCount]);
+	shortLivingMemoryAccountArray->allAccounts[shortLivingMemoryAccountArray->accountCount++] = newAccount;
+}
 
 /*
  * InitializeMemoryAccount
@@ -796,6 +838,7 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
 	newAccount->allocated = 0;
 	newAccount->freed = 0;
 	newAccount->peak = 0;
+    newAccount->parentId = parentAccountId;
 
 	if (ownerType <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
@@ -804,9 +847,8 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
 	else
 	{
 		newAccount->id = nextAccountId++;
+		AddToShortLivingAccountArray(newAccount);
 	}
-
-    newAccount->parentId = parentAccountId;
 }
 
 /*
@@ -880,7 +922,6 @@ CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccountI
 
     return newAccount->id;
 }
-
 
 /*
  * CheckMemoryAccountingLeak
@@ -1252,16 +1293,17 @@ InitMemoryAccounting()
 				MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
 
 		Assert(TopMemoryAccount == NULL && MemoryAccountMemoryContext == NULL);
+		for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot; longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingIdx++)
+		{
+			longLivingMemoryAccountArray[longLivingIdx] = MemoryAccounting_CreateAccount(0, longLivingIdx);
+		}
 
-		MemoryAccountTreeLogicalRoot = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_LogicalRoot);
-
-		SharedChunkHeadersMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_SharedChunkHeader);
-
-		RolloverMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Rollover);
-
-		MemoryAccountMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MemAccount);
-
-		AlienExecutorMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_AlienShared);
+		/* Now set all the global memory accounts */
+		MemoryAccountTreeLogicalRoot = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot];
+		SharedChunkHeadersMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_SharedChunkHeader];
+		RolloverMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
+		MemoryAccountMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_MemAccount];
+		AlienExecutorMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Exec_AlienShared];
 
 		/* Now initiate the memory accounting system. */
 		MemoryAccountMemoryContext = AllocSetContextCreate(TopMemoryContext,
@@ -1291,11 +1333,13 @@ InitMemoryAccounting()
 				AlienExecutorMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot);
 	}
 
+	InitShortLivingMemoryAccountArray();
+
 	TopMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Top);
 	/* For AlienExecutorMemoryAccount we need TopMemoryAccount as parent */
 	ActiveMemoryAccount = TopMemoryAccount;
 
-	AlienExecutorMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_AlienShared);
+
 }
 
 static void
@@ -1323,6 +1367,7 @@ AdvanceMemoryAccountingGeneration()
 	ActiveMemoryAccount = RolloverMemoryAccount;
 	MemoryContextReset(MemoryAccountMemoryContext);
 	Assert(MemoryAccountMemoryAccount->allocated == MemoryAccountMemoryAccount->freed);
+	shortLivingMemoryAccountArray = NULL;
 
 	/*
 	 * Reset MemoryAccountMemoryAccount so that one query doesn't take the blame
