@@ -4572,7 +4572,6 @@ PostgresMain(int argc, char *argv[],
 		MemoryContextSwitchTo(MessageContext);
 		MemoryContextResetAndDeleteChildren(MessageContext);
 		VmemTracker_ResetMaxVmemReserved();
-		MemoryAccounting_ResetPeakBalance();
 
 		//if (!IsTransactionOrTransactionBlock()){
 			/* Reset memory accounting */
