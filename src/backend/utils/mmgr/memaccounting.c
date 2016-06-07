@@ -128,19 +128,25 @@ MemoryAccount*
 MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
 {
 	MemoryAccount *memoryAccount = NULL;
-	Assert(NULL != shortLivingMemoryAccountArray);
 
 	if (id >= liveAccountStartId)
 	{
+		Assert(NULL != shortLivingMemoryAccountArray);
 		Assert(id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount);
 		memoryAccount = shortLivingMemoryAccountArray->allAccounts[id - liveAccountStartId];
 	}
 	else if (id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
+		Assert(NULL != longLivingMemoryAccountArray);
 		memoryAccount = longLivingMemoryAccountArray[id];
 	}
+	else if (id < liveAccountStartId)
+	{
+		Assert(NULL != longLivingMemoryAccountArray);
+		memoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
+	}
 
-	Assert(IsA((shortLivingMemoryAccountArray->allAccounts[id]), MemoryAccount));
+	Assert(IsA(memoryAccount, MemoryAccount));
 
 	return memoryAccount;
 }
@@ -159,18 +165,15 @@ MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
  */
 MemoryAccount *MemoryAccountTreeLogicalRoot = NULL;
 
-/* TopMemoryAccount is the father of all memory accounts EXCEPT RolloverMemoryAccount */
-MemoryAccount *TopMemoryAccount = NULL;
 /*
- * ActiveMemoryAccount is used by memory allocator to record the allocation.
+ * ActiveMemoryAccountId is used by memory allocator to record the allocation.
  * However, deallocation uses the allocator information and ignores ActiveMemoryAccount
  */
-MemoryAccount *ActiveMemoryAccount = NULL;
-MemoryAccountIdType ActiveMemoryAccountId;
+MemoryAccountIdType ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
 /* MemoryAccountMemoryAccount saves the memory overhead of memory accounting itself */
 MemoryAccount *MemoryAccountMemoryAccount = NULL;
 MemoryAccountArray* shortLivingMemoryAccountArray = NULL;
-MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING] = {NULL};
+MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING + 1] = {NULL};
 
 /*
  * SharedChunkHeadersMemoryAccount is used to track all the allocations
@@ -225,11 +228,10 @@ MemoryAccounting_Reset()
 		AdvanceMemoryAccountingGeneration();
 		CheckMemoryAccountingLeak();
 
-		TopMemoryAccount = NULL;
-
 		/* Outstanding balance will come from either the rollover or the shared chunk header account */
 		Assert((RolloverMemoryAccount->allocated - RolloverMemoryAccount->freed) +
-				(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed) ==
+				(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed) +
+				(AlienExecutorMemoryAccount->allocated - AlienExecutorMemoryAccount->freed) ==
 				MemoryAccountingOutstandingBalance);
 		MemoryAccounting_ResetPeakBalance();
 	}
@@ -335,20 +337,14 @@ MemoryAccounting_CreateAccount(long maxLimitInKB, MemoryOwnerType ownerType)
 {
 	MemoryAccountIdType parentId = MEMORY_OWNER_TYPE_Undefined;
 
-	if (NULL == ActiveMemoryAccount)
+	if (MEMORY_OWNER_TYPE_Undefined == ActiveMemoryAccountId)
 	{
-		if (ownerType == MEMORY_OWNER_TYPE_LogicalRoot)
-		{
-			parentId = MEMORY_OWNER_TYPE_Undefined;
-		}
-		else
-		{
-			parentId = MEMORY_OWNER_TYPE_LogicalRoot;
-		}
+		/* Even Logical Root will have itself as parent */
+		parentId = MEMORY_OWNER_TYPE_LogicalRoot;
 	}
 	else
 	{
-		parentId = ActiveMemoryAccount->id;
+		parentId = ActiveMemoryAccountId;
 	}
 	return CreateMemoryAccountImpl(maxLimitInKB * 1024, ownerType, parentId);
 }
@@ -790,6 +786,14 @@ InitShortLivingMemoryAccountArray()
 }
 
 static void
+AddToLongLivingAccountArray(MemoryAccount *newAccount)
+{
+	Assert(newAccount->id <= MEMORY_OWNER_TYPE_END_LONG_LIVING);
+	Assert(NULL == longLivingMemoryAccountArray[newAccount->id]);
+	longLivingMemoryAccountArray[newAccount->id] = newAccount;
+}
+
+static void
 AddToShortLivingAccountArray(MemoryAccount *newAccount)
 {
 	Assert(shortLivingMemoryAccountArray->accountCount == newAccount->id - liveAccountStartId);
@@ -843,6 +847,7 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
 	if (ownerType <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
 		newAccount->id = ownerType;
+		AddToLongLivingAccountArray(newAccount);
 	}
 	else
 	{
@@ -878,6 +883,7 @@ CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccountI
 	 */
     Assert(ownerType == MEMORY_OWNER_TYPE_LogicalRoot || ownerType == MEMORY_OWNER_TYPE_SharedChunkHeader ||
     		ownerType == MEMORY_OWNER_TYPE_Rollover || ownerType == MEMORY_OWNER_TYPE_MemAccount ||
+			ownerType == MEMORY_OWNER_TYPE_Exec_AlienShared ||
     		(MemoryAccountMemoryContext != NULL && MemoryAccountMemoryAccount != NULL));
 
     if (ownerType == MEMORY_OWNER_TYPE_SharedChunkHeader || ownerType == MEMORY_OWNER_TYPE_Rollover || ownerType == MEMORY_OWNER_TYPE_MemAccount || ownerType == MEMORY_OWNER_TYPE_Top)
@@ -1089,7 +1095,7 @@ MemoryAccountWalkArray(MemoryAccountIdType rootId, MemoryAccountVisitor visitor,
 			        void *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial)
 {
     MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree();
-	MemoryAccountTreeWalkNode(&tree[ConvertIdToUniversalArrayIndex(rootId)], MemoryAccountToLog, context, 0, &totalWalked, totalWalked);
+	MemoryAccountTreeWalkNode(&tree[ConvertIdToUniversalArrayIndex(rootId)], MemoryAccountToLog, context, 0, totalWalked, *totalWalked);
 	pfree(tree);
 
 }
@@ -1121,7 +1127,7 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
 
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
     appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
-		MemoryAccounting_GetAccountName(memoryAccount),
+		MemoryAccounting_GetAccountName(memoryAccount->id),
 		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
 
     memAccountCxt->memoryAccountCount++;
@@ -1188,7 +1194,7 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 
 	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", MemoryAccounting_GetAccountName(memoryAccount),
+    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", MemoryAccounting_GetAccountName(memoryAccount->id),
     		curWalkSerial /* Child walk serial */, parentWalkSerial /* Parent walk serial */,
 			(int64) memoryAccount->maxLimit /* Quota */,
 			memoryAccount->peak /* Peak */,
@@ -1244,7 +1250,7 @@ SerializeMemoryAccount(MemoryAccountTree *memoryAccountTreeNode, void *context, 
 static void
 InitMemoryAccounting()
 {
-	Assert(TopMemoryAccount == NULL);
+	Assert(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Undefined || ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Rollover);
 
 	/*
 	 * Order of creation:
@@ -1296,10 +1302,12 @@ InitMemoryAccounting()
 		Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL &&
 				MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
 
-		Assert(TopMemoryAccount == NULL && MemoryAccountMemoryContext == NULL);
+		Assert(MemoryAccountMemoryContext == NULL);
 		for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot; longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingIdx++)
 		{
-			longLivingMemoryAccountArray[longLivingIdx] = MemoryAccounting_CreateAccount(0, longLivingIdx);
+			/* For long living account */
+			MemoryAccountIdType newAccountId = MemoryAccounting_CreateAccount(0, longLivingIdx);
+			Assert(longLivingIdx == newAccountId);
 		}
 
 		/* Now set all the global memory accounts */
@@ -1316,12 +1324,6 @@ InitMemoryAccounting()
 											 ALLOCSET_DEFAULT_INITSIZE,
 											 ALLOCSET_DEFAULT_MAXSIZE);
 
-		/*
-		 * Temporarily active MemoryAccountMemoryAccount. Once
-		 * all the setup is done, TopMemoryAccount will become
-		 * the ActiveMemoryAccount
-		 */
-		ActiveMemoryAccount = MemoryAccountMemoryAccount;
 	}
 	else
 	{
@@ -1337,13 +1339,17 @@ InitMemoryAccounting()
 				AlienExecutorMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot);
 	}
 
+	/*
+	 * Temporarily active MemoryAccountMemoryAccount. Once
+	 * all the setup is done, TopMemoryAccount will become
+	 * the ActiveMemoryAccount
+	 */
+	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_MemAccount;
+
 	InitShortLivingMemoryAccountArray();
 
-	TopMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Top);
 	/* For AlienExecutorMemoryAccount we need TopMemoryAccount as parent */
-	ActiveMemoryAccount = TopMemoryAccount;
-
-
+	ActiveMemoryAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Top);
 }
 
 static void
@@ -1368,7 +1374,7 @@ AdvanceMemoryAccountingGeneration()
 	 * is the only account to survive this MemoryAccountMemoryContext
 	 * reset.
 	 */
-	ActiveMemoryAccount = RolloverMemoryAccount;
+	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Rollover;
 	MemoryContextReset(MemoryAccountMemoryContext);
 	Assert(MemoryAccountMemoryAccount->allocated == MemoryAccountMemoryAccount->freed);
 	shortLivingMemoryAccountArray = NULL;
@@ -1380,12 +1386,10 @@ AdvanceMemoryAccountingGeneration()
 	 */
 	ClearAccount(MemoryAccountMemoryAccount);
 
-	/* Reset AlienExecutorMemoryAccount balance */
-	ClearAccount(AlienExecutorMemoryAccount);
-
-	/* Everything except the SharedChunkHeadersMemoryAccount rolls over */
+	/* Everything except the SharedChunkHeadersMemoryAccount and AlienExecutorMemoryAccount rolls over */
 	RolloverMemoryAccount->allocated = (MemoryAccountingOutstandingBalance -
-			(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed));
+			(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed) -
+			(AlienExecutorMemoryAccount->allocated - AlienExecutorMemoryAccount->freed));
 	RolloverMemoryAccount->freed = 0;
 
 	/*
@@ -1397,8 +1401,6 @@ AdvanceMemoryAccountingGeneration()
 
 	liveAccountStartId = nextAccountId;
 
-	Assert((RolloverMemoryAccount->allocated - RolloverMemoryAccount->freed) == (MemoryAccountingOutstandingBalance -
-			(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed)));
 	Assert(RolloverMemoryAccount->peak >= MemoryAccountingPeakBalance);
 }
 

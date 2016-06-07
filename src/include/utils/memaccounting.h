@@ -159,7 +159,7 @@ typedef uint64 MemoryAccountIdType;
 
 // Array of accounts available
 extern struct MemoryAccountArray* shortLivingMemoryAccountArray;
-extern struct MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING];
+extern struct MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING + 1];
 
 extern MemoryAccountIdType ActiveMemoryAccountId;
 
@@ -183,8 +183,8 @@ typedef struct MemoryAccount {
 
 typedef struct MemoryAccountTree {
 	MemoryAccount *account;
-	MemoryAccount *firstChild;
-	MemoryAccount *nextSibling;
+	struct MemoryAccountTree *firstChild;
+	struct MemoryAccountTree *nextSibling;
 } MemoryAccountTree;
 
 typedef struct MemoryAccountArray{

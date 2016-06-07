@@ -587,7 +587,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 */
 		if (SharedChunkHeadersMemoryAccount != NULL)
 		{
-			MemoryAccounting_Allocate(SharedChunkHeadersMemoryAccount,
+			MemoryAccounting_Allocate(MEMORY_OWNER_TYPE_SharedChunkHeader,
 					(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 
