@@ -165,8 +165,11 @@ MemoryAccount *TopMemoryAccount = NULL;
  * However, deallocation uses the allocator information and ignores ActiveMemoryAccount
  */
 MemoryAccount *ActiveMemoryAccount = NULL;
+MemoryAccountIdType ActiveMemoryAccountId;
 /* MemoryAccountMemoryAccount saves the memory overhead of memory accounting itself */
 MemoryAccount *MemoryAccountMemoryAccount = NULL;
+MemoryAccountArray* shortLivingMemoryAccountArray = NULL;
+MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING] = {NULL};
 
 /*
  * SharedChunkHeadersMemoryAccount is used to track all the allocations
@@ -1170,7 +1173,7 @@ SerializeMemoryAccount(MemoryAccountTree *memoryAccountTreeNode, void *context, 
 
 	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
-	Assert(MemoryAccountIsValid(memoryAccount));
+	Assert(MemoryAccounting_IsValidAccount(memoryAccount->id));
 
 	MemoryAccountSerializerCxt *memAccountCxt = (MemoryAccountSerializerCxt*) context;
 
