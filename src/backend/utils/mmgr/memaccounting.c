@@ -893,10 +893,11 @@ CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccountI
     }
 
     /*
-     * Other than logical root, no long-living account should have children
+     * Other than logical root and AlienShared, no long-living account should have children
      * and only logical root is allowed to have no parent
      */
-    Assert((parentId == MEMORY_OWNER_TYPE_LogicalRoot || parentId > MEMORY_OWNER_TYPE_END_LONG_LIVING));
+    Assert((parentId == MEMORY_OWNER_TYPE_LogicalRoot || parentId == MEMORY_OWNER_TYPE_Exec_AlienShared
+    		|| parentId > MEMORY_OWNER_TYPE_END_LONG_LIVING));
 
     /*
      * Only SharedChunkHeadersMemoryAccount, Rollover, MemoryAccountMemoryAccount,
