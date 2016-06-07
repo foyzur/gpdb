@@ -934,8 +934,12 @@ CheckMemoryAccountingLeak()
 	/* Just an API. Not yet implemented. */
 }
 
+/*
+ * Returns a combined array index where the first MEMORY_OWNER_TYPE_END_LONG_LIVING indices
+ * are saved for long living accounts and short living account indices follow after that
+ */
 static MemoryAccountIdType
-ConvertIdToArrayIndex(MemoryAccountIdType id)
+ConvertIdToUniversalArrayIndex(MemoryAccountIdType id)
 {
 	if (id >= MEMORY_OWNER_TYPE_LogicalRoot && id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
@@ -943,7 +947,7 @@ ConvertIdToArrayIndex(MemoryAccountIdType id)
 	}
 	else if (id >= liveAccountStartId && id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount)
 	{
-		return id - liveAccountStartId;
+		return id - liveAccountStartId + MEMORY_OWNER_TYPE_END_LONG_LIVING + 1;
 	}
 	else if (id < liveAccountStartId)
 	{
@@ -961,13 +965,13 @@ AddChild(MemoryAccountTree *treeArray, MemoryAccountIdType childId, MemoryAccoun
 	AssertImply(parentId == MEMORY_OWNER_TYPE_Undefined, childId == MEMORY_OWNER_TYPE_LogicalRoot);
 	Assert(parentId == MEMORY_OWNER_TYPE_Undefined || treeArray[parentId].account != NULL);
 
-	MemoryAccountIdType childArrayIndex = ConvertIdToArrayIndex(childId);
+	MemoryAccountIdType childArrayIndex = ConvertIdToUniversalArrayIndex(childId);
 	MemoryAccountTree *childNode = &treeArray[childArrayIndex];
 	childNode->account = childAccount;
 
 	if (childId != MEMORY_OWNER_TYPE_LogicalRoot)
 	{
-		MemoryAccountIdType parentArrayIndex = ConvertIdToArrayIndex(parentId);
+		MemoryAccountIdType parentArrayIndex = ConvertIdToUniversalArrayIndex(parentId);
 		MemoryAccountTree *parentNode = &treeArray[parentArrayIndex];
 		childNode->nextSibling = parentNode->firstChild;
 		parentNode->firstChild = childNode;
@@ -1085,7 +1089,7 @@ MemoryAccountWalkArray(MemoryAccountIdType rootId, MemoryAccountVisitor visitor,
 			        void *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial)
 {
     MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree();
-	MemoryAccountTreeWalkNode(&tree[ConvertIdToArrayIndex(rootId)], MemoryAccountToLog, context, 0, &totalWalked, totalWalked);
+	MemoryAccountTreeWalkNode(&tree[ConvertIdToUniversalArrayIndex(rootId)], MemoryAccountToLog, context, 0, &totalWalked, totalWalked);
 	pfree(tree);
 
 }
