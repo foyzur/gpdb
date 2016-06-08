@@ -69,15 +69,16 @@ extern bool gp_dump_memory_usage;
 typedef enum MemoryOwnerType
 {
 	/* Long-living accounts that survive reset */
-	// Reserve 0 for undefined/uninitialized memory account id
-	MEMORY_OWNER_TYPE_Undefined = 0,
-	MEMORY_OWNER_TYPE_LogicalRoot,
+	MEMORY_OWNER_TYPE_LogicalRoot = 0,
 	MEMORY_OWNER_TYPE_SharedChunkHeader,
 	MEMORY_OWNER_TYPE_Rollover,
 	MEMORY_OWNER_TYPE_MemAccount,
 	MEMORY_OWNER_TYPE_Exec_AlienShared,
 	MEMORY_OWNER_TYPE_END_LONG_LIVING = MEMORY_OWNER_TYPE_Exec_AlienShared,
 	/* End of long-living accounts */
+
+	/* Undefined is out of range of long living, but short living ID should never be undefined */
+	MEMORY_OWNER_TYPE_Undefined,
 
 	/* Short-living accounts */
 	MEMORY_OWNER_TYPE_START_SHORT_LIVING,
@@ -134,7 +135,7 @@ typedef enum MemoryOwnerType
 	MEMORY_OWNER_TYPE_Exec_BitmapTableScan,
 	MEMORY_OWNER_TYPE_Exec_PartitionSelector,
 	MEMORY_OWNER_TYPE_EXECUTOR_END = MEMORY_OWNER_TYPE_Exec_PartitionSelector,
-
+	MEMORY_OWNER_TYPE_END_SHORT_LIVING = MEMORY_OWNER_TYPE_EXECUTOR_END
 } MemoryOwnerType;
 
 /****
@@ -193,28 +194,28 @@ typedef struct MemoryAccountArray{
 	// array of pointers to memory accounts of size accountCount
 	MemoryAccount** allAccounts;
 } MemoryAccountArray;
-
-/*
- * Instead of pointers to construct the tree, the SerializedMemoryAccount
- * uses "serial" of each node and saves parent serial to construct the tree.
- * This is required as we cannot serialize pointers. As an optimization, we
- * can later on try to reuse the pointers themselves and treat them as integer
- * to save the "serial"
- */
-typedef struct SerializedMemoryAccount {
-	NodeTag type;
-	MemoryAccount memoryAccount;
-
-	/*
-	 * memoryAccountSerial and parentMemoryAccountSerial are used for serializing
-	 * MemoryAccount. Note: we cannot serialize the tree using the pointers.
-	 * Instead we serialize these "serial" and "parent serial" and construct the
-	 * tree at the destination (e.g., dispatcher or any reporting tool).
-	 */
-	uint32 memoryAccountSerial;
-	/* If memoryAccountSerial == parentMemoryAccountSerial, then the node has NO parent */
-	uint32 parentMemoryAccountSerial;
-} SerializedMemoryAccount;
+//
+///*
+// * Instead of pointers to construct the tree, the SerializedMemoryAccount
+// * uses "serial" of each node and saves parent serial to construct the tree.
+// * This is required as we cannot serialize pointers. As an optimization, we
+// * can later on try to reuse the pointers themselves and treat them as integer
+// * to save the "serial"
+// */
+//typedef struct SerializedMemoryAccount {
+//	NodeTag type;
+//	MemoryAccount memoryAccount;
+//
+//	/*
+//	 * memoryAccountSerial and parentMemoryAccountSerial are used for serializing
+//	 * MemoryAccount. Note: we cannot serialize the tree using the pointers.
+//	 * Instead we serialize these "serial" and "parent serial" and construct the
+//	 * tree at the destination (e.g., dispatcher or any reporting tool).
+//	 */
+//	uint32 memoryAccountSerial;
+//	/* If memoryAccountSerial == parentMemoryAccountSerial, then the node has NO parent */
+//	uint32 parentMemoryAccountSerial;
+//} SerializedMemoryAccount;
 
 /*
  * START_MEMORY_ACCOUNT would switch to the specified newMemoryAccount,
@@ -278,19 +279,18 @@ MemoryAccounting_Free(MemoryAccountIdType memoryAccountId, struct MemoryContextD
 extern uint32
 MemoryAccounting_Serialize(StringInfoData* buffer);
 
-extern SerializedMemoryAccount*
-MemoryAccounting_Deserialize(const void *serializedBits,
-		uint32 memoryAccountCount);
-
 extern uint64
-MemoryAccounting_GetPeak(MemoryAccount *memoryAccount);
+MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId);
 
 extern uint64
 MemoryAccounting_GetBalance(MemoryAccount *memoryAccount);
 
 extern void
-MemoryAccounting_ToString(MemoryAccountIdType rootId, StringInfoData *str,
-		uint32 indentation);
+MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation);
+
+extern void
+MemoryAccounting_CombinedAccountArrayToString(MemoryAccount *combinedArray,
+		MemoryAccountIdType accountCount, StringInfoData *str, uint32 indentation);
 
 extern void
 MemoryAccounting_SaveToFile(int currentSliceId);
@@ -302,7 +302,7 @@ extern const char*
 MemoryAccounting_GetAccountName(MemoryAccountIdType memoryAccountId);
 
 extern void
-MemoryAccounting_ToCSV(MemoryAccountIdType rootId, StringInfoData *str, char *prefix);
+MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefix);
 
 extern void
 MemoryAccounting_PrettyPrint(void);

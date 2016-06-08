@@ -34,23 +34,6 @@ typedef struct MemoryAccountSerializerCxt
 	char *prefix; /* Prefix to add before each line */
 } MemoryAccountSerializerCxt;
 
-/* Saves the deserializer context */
-typedef struct MemoryAccountDeserializerCxt
-{
-	/* total MemoryAccount to deserialize */
-	int memoryAccountCount;
-	/* The raw bytes from where to deserialize */
-	StringInfoData *buffer;
-
-	/*
-	 * We build MemoryAccount array in-place, reusing the memory of "buffer".
-	 * The root will have a pseudo MemoryAccount (as we don't have a tree, and
-	 * RolloverMemoryAccount, and TopMemoryAccount both are top-level) and everything
-	 * will be direct/indirect children of it.
-	 */
-	MemoryAccount *root; /* Array of MemoryAccount [0...memoryAccountCount-1] */
-} MemoryAccountDeserializerCxt;
-
 static MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 static MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 
@@ -79,6 +62,9 @@ AdvanceMemoryAccountingGeneration(void);
 static void
 InitMemoryAccounting(void);
 
+static MemoryAccountTree*
+ConvertMemoryAccountArrayToTree(MemoryAccount** longLiving, MemoryAccount** shortLiving, MemoryAccountIdType shortLivingCount);
+
 static CdbVisitOpt
 MemoryAccountTreeWalkNode(MemoryAccountTree *memoryAccountTreeNode,
 		MemoryAccountVisitor visitor, void *context, uint32 depth,
@@ -89,16 +75,8 @@ MemoryAccountTreeWalkKids(MemoryAccountTree *memoryAccountTreeNode,
 		MemoryAccountVisitor visitor, void *context, uint32 depth,
 		uint32 *totalWalked, uint32 parentWalkSerial);
 
-static void
-MemoryAccountWalkArray(MemoryAccountIdType rootId, MemoryAccountVisitor visitor,
-			        void *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial);
-
 static CdbVisitOpt
 MemoryAccountToString(MemoryAccountTree *memoryAccount, void *context,
-		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
-
-static CdbVisitOpt
-SerializeMemoryAccount(MemoryAccountTree *memoryAccountTreeNode, void *context,
 		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
 
 static CdbVisitOpt
@@ -121,7 +99,8 @@ MemoryAccounting_ResetPeakBalance(void);
 bool
 MemoryAccounting_IsValidAccount(MemoryAccountIdType id)
 {
-	return (id <= MEMORY_OWNER_TYPE_END_LONG_LIVING) || (id >= liveAccountStartId && id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount);
+	AssertImply(NULL == shortLivingMemoryAccountArray, liveAccountStartId == nextAccountId);
+	return (id < liveAccountStartId + (NULL == shortLivingMemoryAccountArray ? 0 : shortLivingMemoryAccountArray->accountCount));
 }
 
 MemoryAccount*
@@ -138,6 +117,7 @@ MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
 	else if (id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
 		Assert(NULL != longLivingMemoryAccountArray);
+		/* 0 is reserved as undefined. So, the array index is 1 behind */
 		memoryAccount = longLivingMemoryAccountArray[id];
 	}
 	else if (id < liveAccountStartId)
@@ -254,6 +234,7 @@ bool
 MemoryAccounting_Allocate(MemoryAccountIdType memoryAccountId,
 		struct MemoryContextData *context, Size allocatedSize)
 {
+	Assert(MemoryAccounting_IsValidAccount(memoryAccountId));
 	MemoryAccount* memoryAccount = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
 
 	Assert(memoryAccount->allocated + allocatedSize >=
@@ -370,12 +351,12 @@ MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
  * MemoryAccounting_GetPeak
  *		Returns peak memory
  *
- * memoryAccount: The concerned account.
+ * memoryAccountId: The concerned account.
  */
 uint64
-MemoryAccounting_GetPeak(MemoryAccount * memoryAccount)
+MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId)
 {
-	return memoryAccount->peak;
+	return MemoryAccounting_ConvertIdToAccount(memoryAccountId)->peak;
 }
 
 /*
@@ -542,85 +523,22 @@ MemoryAccounting_GetAccountName(MemoryAccountIdType memoryAccountId)
 uint32
 MemoryAccounting_Serialize(StringInfoData *buffer)
 {
-	MemoryAccountSerializerCxt cxt;
-	cxt.buffer = buffer;
-	cxt.prefix = NULL;
+	START_MEMORY_ACCOUNT(MEMORY_OWNER_TYPE_MemAccount);
+	{
+		for (MemoryAccountIdType longIdx = MEMORY_OWNER_TYPE_LogicalRoot; longIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longIdx++)
+		{
+			MemoryAccount *longLivingAccount = MemoryAccounting_ConvertIdToAccount(longIdx);
+			appendBinaryStringInfo(buffer, longLivingAccount, sizeof(MemoryAccount));
+		}
 
-	cxt.memoryAccountCount = 0;
-	uint32 totalWalked = 0;
-	MemoryAccountWalkArray(MEMORY_OWNER_TYPE_LogicalRoot, SerializeMemoryAccount, &cxt, 0, &totalWalked, totalWalked);
-
-	return totalWalked;
-}
-/*
- * MemoryAccounting_Deserialize:
- * 		Constructs the MemoryAccountTree in-place. NB: the function does not allocate
- * 		any new memory. Instead it assumes a binary set of bits that originally
- * 		represented the memory accounting tree. It updates the "serialized bits" to
- * 		correctly restores the original pointers that represents the tree.
- * 		Only the "logical root" is allocated in this function in the current memory context.
- * 		If the serialized bits have shorter life span than expected, it is callers
- * 		responsibility to correctly memcpy into the longer living context as appropriate.
- *
- * serializedBits: The array of bits that represents the serialized bits of the
- * 		memory accounting tree
- *
- * memoryAccountCount: Number of memory account node to expect in the serializedBits
- */
-SerializedMemoryAccount*
-MemoryAccounting_Deserialize(const void *serializedBits, uint32 memoryAccountCount)
-{
-	return NULL;
-
-//    /*
-//     * Array pointers to different memory accounts in the buffer for indexing to expedite
-//     * tree construction
-//     */
-//    SerializedMemoryAccount **allAccounts = (SerializedMemoryAccount**)palloc0(memoryAccountCount * sizeof(SerializedMemoryAccount*));
-//    MemoryAccount **lastSeenChildren = (MemoryAccount**)palloc0(memoryAccountCount * sizeof(MemoryAccount*));
-//
-//    SerializedMemoryAccount *memoryAccounts = (SerializedMemoryAccount*)serializedBits;
-//    for (int memAccSerial = 0; memAccSerial < memoryAccountCount; memAccSerial++)
-//    {
-//    	SerializedMemoryAccount *curMemoryAccount = &memoryAccounts[memAccSerial];
-//    	Assert(MemoryAccountIsValid(&curMemoryAccount->memoryAccount));
-//
-//    	curMemoryAccount->memoryAccount.firstChild = NULL;
-//    	curMemoryAccount->memoryAccount.nextSibling = NULL;
-//
-//    	allAccounts[curMemoryAccount->memoryAccountSerial] = curMemoryAccount;
-//
-//    	if (curMemoryAccount->memoryAccountSerial == curMemoryAccount->parentMemoryAccountSerial)
-//    	{
-//			/* Only "logical root" can be parent less */
-//			Assert(curMemoryAccount->memoryAccountSerial == 0);
-//
-//			/* We don't need to adjust parent and sibling pointers */
-//			continue;
-//    	}
-//
-//    	SerializedMemoryAccount *parentMemoryAccount = allAccounts[curMemoryAccount->parentMemoryAccountSerial];
-//        	Assert(MemoryAccountIsValid(&parentMemoryAccount->memoryAccount));
-//
-//        MemoryAccount *lastSeenChild = lastSeenChildren[curMemoryAccount->parentMemoryAccountSerial];
-//
-//        if (!lastSeenChild)
-//        {
-//    		parentMemoryAccount->memoryAccount.firstChild = &(curMemoryAccount->memoryAccount);
-//        }
-//        else
-//        {
-//    		lastSeenChild->nextSibling = &curMemoryAccount->memoryAccount;
-//        }
-//
-//		lastSeenChildren[curMemoryAccount->parentMemoryAccountSerial] = &(curMemoryAccount->memoryAccount);
-//		curMemoryAccount->memoryAccount.parentAccount = &(parentMemoryAccount->memoryAccount);
-//    }
-//
-//    pfree(allAccounts);
-//    pfree(lastSeenChildren);
-//
-//    return memoryAccounts;
+		for (int i = 0; i < shortLivingMemoryAccountArray->accountCount; i++)
+		{
+			MemoryAccount* shortLivingAccount = shortLivingMemoryAccountArray->allAccounts[i];
+			appendBinaryStringInfo(buffer, shortLivingAccount, sizeof(MemoryAccount));
+		}
+	}
+	END_MEMORY_ACCOUNT();
+	return MEMORY_OWNER_TYPE_END_LONG_LIVING + 1 + shortLivingMemoryAccountArray->accountCount;
 }
 
 /*
@@ -633,7 +551,7 @@ MemoryAccounting_Deserialize(const void *serializedBits, uint32 memoryAccountCou
  * indentation: The indentation of the root
  */
 void
-MemoryAccounting_ToString(MemoryAccountIdType rootId, StringInfoData *str, uint32 indentation)
+MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation)
 {
 	MemoryAccountSerializerCxt cxt;
 	cxt.buffer = str;
@@ -641,7 +559,7 @@ MemoryAccounting_ToString(MemoryAccountIdType rootId, StringInfoData *str, uint3
 	cxt.prefix = NULL;
 
 	uint32 totalWalked = 0;
-	MemoryAccountWalkArray(rootId, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
+	MemoryAccountTreeWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
 }
 
 /*
@@ -654,7 +572,7 @@ MemoryAccounting_ToString(MemoryAccountIdType rootId, StringInfoData *str, uint3
  * prefix: A common prefix for each csv line
  */
 void
-MemoryAccounting_ToCSV(MemoryAccountIdType rootId, StringInfoData *str, char *prefix)
+MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefix)
 {
 	MemoryAccountSerializerCxt cxt;
 	cxt.buffer = str;
@@ -683,7 +601,7 @@ MemoryAccounting_ToCSV(MemoryAccountIdType rootId, StringInfoData *str, char *pr
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */,
 			MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */);
 
-	MemoryAccountWalkArray(rootId, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
+	MemoryAccountTreeWalkNode(root, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
 }
 
 /*
@@ -697,11 +615,36 @@ MemoryAccounting_PrettyPrint()
 	StringInfoData memBuf;
 	initStringInfo(&memBuf);
 
-	MemoryAccounting_ToString(MEMORY_OWNER_TYPE_LogicalRoot, &memBuf, 0);
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot],
+			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
+
+	MemoryAccounting_ToString(tree, &memBuf, 0);
 
 	elog(WARNING, "%s\n", memBuf.data);
 
 	pfree(memBuf.data);
+}
+
+/*
+ * MemoryAccounting_CombinedAccountArrayToString
+ *    Converts a unified array of long and short living accounts to string.
+ */
+void
+MemoryAccounting_CombinedAccountArrayToString(MemoryAccount *combinedArray,
+		MemoryAccountIdType accountCount, StringInfoData *str, uint32 indentation)
+{
+	MemoryAccount **combinedArrayOfPointers = palloc(sizeof(MemoryAccount *) * accountCount);
+	for (MemoryAccountIdType idx = 0; idx < accountCount; idx++)
+	{
+		combinedArrayOfPointers[idx] = &combinedArray[idx];
+	}
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&combinedArrayOfPointers[0],
+			&combinedArrayOfPointers[MEMORY_OWNER_TYPE_START_SHORT_LIVING], accountCount);
+
+	MemoryAccounting_ToString(tree, str, indentation);
+
+	pfree(tree);
+	pfree(combinedArrayOfPointers);
 }
 
 /*
@@ -723,11 +666,15 @@ MemoryAccounting_SaveToFile(int currentSliceId)
 		memory_profiler_run_id, memory_profiler_dataset_id, memory_profiler_query_id,
 		memory_profiler_dataset_size, statement_mem, gp_session_id, GetCurrentStatementStartTimestamp(),
 		currentSliceId, GpIdentity.segindex);
-	MemoryAccounting_ToCSV(MEMORY_OWNER_TYPE_LogicalRoot, &memBuf, prefix.data);
+
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot],
+			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
+	MemoryAccounting_ToCSV(tree, &memBuf, prefix.data);
 	SaveMemoryBufToDisk(&memBuf, prefix.data);
 
 	pfree(prefix.data);
 	pfree(memBuf.data);
+	pfree(tree);
 }
 
 /*
@@ -759,8 +706,12 @@ MemoryAccounting_SaveToLog()
     		totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */, MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */, MemoryAccountingPeakBalance /* Current */);
 
-    MemoryAccountWalkArray(MEMORY_OWNER_TYPE_LogicalRoot, MemoryAccountToLog, &cxt, 0, &totalWalked, totalWalked);
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot],
+			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
 
+	MemoryAccountTreeWalkNode(tree, MemoryAccountToLog, &cxt, 0, &totalWalked, totalWalked);
+
+	pfree(tree);
 	return totalWalked;
 }
 
@@ -808,7 +759,7 @@ AddToShortLivingAccountArray(MemoryAccount *newAccount)
 				sizeof(MemoryAccount*) * newArraySize);
 		shortLivingMemoryAccountArray->arraySize = newArraySize;
 
-		memset(&shortLivingMemoryAccountArray->allAccounts[shortLivingMemoryAccountArray->accountCount + 1], 0,
+		memset(&shortLivingMemoryAccountArray->allAccounts[shortLivingMemoryAccountArray->accountCount], 0,
 			(shortLivingMemoryAccountArray->arraySize - shortLivingMemoryAccountArray->accountCount) * sizeof(MemoryAccount*));
 	}
 
@@ -946,39 +897,46 @@ CheckMemoryAccountingLeak()
  * are saved for long living accounts and short living account indices follow after that
  */
 static MemoryAccountIdType
-ConvertIdToUniversalArrayIndex(MemoryAccountIdType id)
+ConvertIdToUniversalArrayIndex(MemoryAccountIdType id, MemoryAccountIdType liveStartId, MemoryAccountIdType shortLivingCount)
 {
 	if (id >= MEMORY_OWNER_TYPE_LogicalRoot && id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
 		return id;
 	}
-	else if (id >= liveAccountStartId && id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount)
+	else if (id >= liveStartId && id < liveStartId + shortLivingCount)
 	{
-		return id - liveAccountStartId + MEMORY_OWNER_TYPE_END_LONG_LIVING + 1;
+		return id - liveStartId + MEMORY_OWNER_TYPE_END_LONG_LIVING + 1;
 	}
-	else if (id < liveAccountStartId)
+	else
 	{
-		return MEMORY_OWNER_TYPE_Rollover;
+		/* Note, we cannot map ID to rollover here as we expect a live account id */
+		Assert(!"Cannot map id to array index");
 	}
 
-	Assert(!"Cannot map id to array index");
 	return MEMORY_OWNER_TYPE_Undefined;
 }
 
 static void
-AddChild(MemoryAccountTree *treeArray, MemoryAccountIdType childId, MemoryAccountIdType parentId)
+AddChild(MemoryAccountTree *treeArray, MemoryAccount *childAccount, MemoryAccount* parentAccount,
+		MemoryAccountIdType liveStartId, MemoryAccountIdType shortLivingCount)
 {
-	MemoryAccount *childAccount = MemoryAccounting_ConvertIdToAccount(childId);
-	AssertImply(parentId == MEMORY_OWNER_TYPE_Undefined, childId == MEMORY_OWNER_TYPE_LogicalRoot);
-	Assert(parentId == MEMORY_OWNER_TYPE_Undefined || treeArray[parentId].account != NULL);
+	MemoryAccountIdType childId = childAccount->id;
+	MemoryAccountIdType parentId = parentAccount->id;
 
-	MemoryAccountIdType childArrayIndex = ConvertIdToUniversalArrayIndex(childId);
+	Assert(parentId != MEMORY_OWNER_TYPE_Undefined && childId != MEMORY_OWNER_TYPE_Undefined);
+	AssertImply(childId == MEMORY_OWNER_TYPE_LogicalRoot, parentId == MEMORY_OWNER_TYPE_LogicalRoot);
+
+	MemoryAccountIdType childArrayIndex = ConvertIdToUniversalArrayIndex(childId, liveStartId, shortLivingCount);
 	MemoryAccountTree *childNode = &treeArray[childArrayIndex];
 	childNode->account = childAccount;
 
 	if (childId != MEMORY_OWNER_TYPE_LogicalRoot)
 	{
-		MemoryAccountIdType parentArrayIndex = ConvertIdToUniversalArrayIndex(parentId);
+		MemoryAccountIdType parentArrayIndex = ConvertIdToUniversalArrayIndex(parentId, liveStartId, shortLivingCount);
+
+		Assert(parentId == MEMORY_OWNER_TYPE_Undefined || childId == MEMORY_OWNER_TYPE_LogicalRoot ||
+				treeArray[parentArrayIndex].account != NULL);
+
 		MemoryAccountTree *parentNode = &treeArray[parentArrayIndex];
 		childNode->nextSibling = parentNode->firstChild;
 		parentNode->firstChild = childNode;
@@ -986,31 +944,49 @@ AddChild(MemoryAccountTree *treeArray, MemoryAccountIdType childId, MemoryAccoun
 }
 
 static MemoryAccountTree*
-ConvertMemoryAccountArrayToTree()
+ConvertMemoryAccountArrayToTree(MemoryAccount** longLiving, MemoryAccount** shortLiving, MemoryAccountIdType shortLivingCount)
 {
 	// caller is in charge to free
 	MemoryAccountTree *treeArray = MemoryContextAllocZero(MemoryAccountMemoryContext, sizeof(MemoryAccountTree) *
-			(shortLivingMemoryAccountArray->accountCount + MEMORY_OWNER_TYPE_END_LONG_LIVING));
+			(shortLivingCount + MEMORY_OWNER_TYPE_END_LONG_LIVING));
 
-	for (MemoryAccountIdType longIdx = MEMORY_OWNER_TYPE_LogicalRoot; longIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longIdx++)
+	for (MemoryAccountIdType longLivingArrayIdx = MEMORY_OWNER_TYPE_LogicalRoot;
+			longLivingArrayIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingArrayIdx++)
 	{
-		MemoryAccount *longLivingAccount = MemoryAccounting_ConvertIdToAccount(longIdx);
-		AddChild(treeArray, longLivingAccount->id, longLivingAccount->parentId);
+		MemoryAccount *longLivingAccount = longLiving[longLivingArrayIdx];
+		Assert(longLivingAccount->parentId <= MEMORY_OWNER_TYPE_END_LONG_LIVING);
+		MemoryAccount *parentAccount = longLiving[longLivingAccount->parentId];
+
+		/* Long living accounts don't care about liveStartId and shortLivingCount */
+		AddChild(treeArray, longLivingAccount, parentAccount, 0 /* liveStartId */, 0 /* shortLivingCount */);
 	}
 
-	for (int i = 0; i < shortLivingMemoryAccountArray->accountCount; i++)
+	if (shortLivingCount > 0)
 	{
-		MemoryAccount* shortLivingAccount = shortLivingMemoryAccountArray->allAccounts[i];
-		AddChild(treeArray, shortLivingAccount->id, shortLivingAccount->parentId);
+		Assert(NULL != shortLiving);
+		MemoryAccountIdType liveStartId = shortLiving[0]->id;
+		/* Ensure that the range of IDs for short living accounts are dense */
+		Assert(shortLiving[shortLivingCount - 1]->id == liveStartId + shortLivingCount - 1);
+
+		for (MemoryAccountIdType shortLivingArrayIdx = 0; shortLivingArrayIdx < shortLivingCount; shortLivingArrayIdx++)
+		{
+			MemoryAccount* shortLivingAccount = shortLiving[shortLivingArrayIdx];
+			MemoryAccount* parentAccount = NULL;
+			if (shortLivingAccount->parentId <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
+			{
+				parentAccount = longLiving[shortLivingAccount->parentId];
+			}
+			else
+			{
+				parentAccount = shortLiving[shortLivingAccount->parentId - liveStartId];
+			}
+
+			Assert(NULL != parentAccount);
+			AddChild(treeArray, shortLivingAccount, parentAccount, liveStartId, shortLivingCount);
+		}
 	}
 
 	return treeArray;
-}
-
-static MemoryAccountTree *
-FindAccountLogicalRoot(MemoryAccountTree *treeArray)
-{
-	return &treeArray[MEMORY_OWNER_TYPE_LogicalRoot];
 }
 
 /**
@@ -1091,15 +1067,6 @@ MemoryAccountTreeWalkKids(MemoryAccountTree *memoryAccountTreeNode,
     return CdbVisit_Walk;
 }
 
-static void
-MemoryAccountWalkArray(MemoryAccountIdType rootId, MemoryAccountVisitor visitor,
-			        void *context, uint32 depth, uint32 *totalWalked, uint32 parentWalkSerial)
-{
-    MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree();
-	MemoryAccountTreeWalkNode(&tree[ConvertIdToUniversalArrayIndex(rootId)], MemoryAccountToLog, context, 0, totalWalked, *totalWalked);
-	pfree(tree);
-
-}
 /**
  * MemoryAccountToString:
  * 		A visitor function that can convert a memory account to string.
@@ -1201,42 +1168,6 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 			memoryAccount->peak /* Peak */,
 			memoryAccount->allocated /* Allocated */,
 			memoryAccount->freed /* Freed */, (memoryAccount->allocated - memoryAccount->freed) /* Current */);
-    memAccountCxt->memoryAccountCount++;
-
-    return CdbVisit_Walk;
-}
-
-/**
- * SerializeMemoryAccount:
- * 		A visitor function that serializes a particular memory account. Called
- * 		from the walker to serialize the whole tree.
- *
- * memoryAccount: The memory account which will be represented as CSV
- * context: context information to pass between successive function call
- * depth: The depth in the tree for current node. Used to generate indentation.
- * parentWalkSerial: parent node's "walk serial"
- * curWalkSerial: current node's "walk serial"
- */
-static CdbVisitOpt
-SerializeMemoryAccount(MemoryAccountTree *memoryAccountTreeNode, void *context, uint32 depth,
-		uint32 parentWalkSerial, uint32 curWalkSerial)
-{
-	if (memoryAccountTreeNode == NULL) return CdbVisit_Walk;
-
-	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
-
-	Assert(MemoryAccounting_IsValidAccount(memoryAccount->id));
-
-	MemoryAccountSerializerCxt *memAccountCxt = (MemoryAccountSerializerCxt*) context;
-
-	SerializedMemoryAccount serializedMemoryAccount;
-	serializedMemoryAccount.type = T_SerializedMemoryAccount;
-	serializedMemoryAccount.memoryAccount = *memoryAccount;
-	serializedMemoryAccount.memoryAccountSerial = curWalkSerial;
-	serializedMemoryAccount.parentMemoryAccountSerial = parentWalkSerial;
-
-	appendBinaryStringInfo(memAccountCxt->buffer, &serializedMemoryAccount, sizeof(SerializedMemoryAccount));
-
     memAccountCxt->memoryAccountCount++;
 
     return CdbVisit_Walk;
