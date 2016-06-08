@@ -500,8 +500,6 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 */
 		if (ActiveMemoryAccountId != MEMORY_OWNER_TYPE_Undefined)
 		{
-			Assert(MemoryAccounting_IsValidAccount(ActiveMemoryAccountId));
-
 			SharedChunkHeader *desiredHeader = set->sharedHeaderList;
 
 			/* Try to look-ahead in the sharedHeaderList to find the desiredHeader */

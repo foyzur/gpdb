@@ -70,7 +70,7 @@ typedef struct CdbExplain_StatHdr
     int         bnotes;         /* offset to extra text area */
     int         enotes;         /* offset to end of extra text area */
 
-    int			memAccountTreeNodeCount;     /* How many mem account we serialized */
+    int			memAccountCount;     /* How many mem account we serialized */
     int			memAccountTreeStartOffset; /* Where in the header our mem account tree is serialized */
 
     CdbExplain_SliceWorker  worker;     /* qExec's overall stats for slice */
@@ -131,7 +131,8 @@ typedef struct CdbExplain_SliceSummary
     int             segindex0;      /* segment id of workers[0] */
     CdbExplain_SliceWorker *workers;    /* -> array [0..nworker-1] of SliceWorker */
 
-    SerializedMemoryAccount **memoryTreeRoots; /* Array of pointers to pseudo roots [0...nworker-1] */
+    MemoryAccount **memoryAccounts; /* Array of memory accounts array, one array per worker [0...nworker-1] */
+    MemoryAccountIdType *memoryAccountCount; /* Memory account count for each slice */
 
     CdbExplain_Agg  peakmemused; /* Summary of SliceWorker stats over all of the slice's workers */
 
@@ -397,7 +398,7 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
     initStringInfo(&memoryAccountTreeBuffer);
     uint totalSerialized = MemoryAccounting_Serialize(&memoryAccountTreeBuffer);
 
-    ctx.hdr.memAccountTreeNodeCount = totalSerialized;
+    ctx.hdr.memAccountCount = totalSerialized;
     appendBinaryStringInfo(&ctx.buf, memoryAccountTreeBuffer.data, memoryAccountTreeBuffer.len);
     pfree(memoryAccountTreeBuffer.data);
 
@@ -540,7 +541,7 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
         if ((size_t)statcell->len < sizeof(*hdr) ||
             (size_t)statcell->len != (sizeof(*hdr) - sizeof(hdr->inst) +
             							hdr->nInst * sizeof(hdr->inst) +
-            							hdr->memAccountTreeNodeCount * sizeof(SerializedMemoryAccount) +
+            							hdr->memAccountCount * sizeof(MemoryAccount) +
             							hdr->enotes - hdr->bnotes) ||
             statcell->len != hdr->enotes ||
             hdr->segindex < -1 ||
@@ -716,7 +717,8 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
         ss->segindex0 = recvstatctx->segindexMin;
         ss->nworker = recvstatctx->segindexMax + 1 - ss->segindex0;
         ss->workers = (CdbExplain_SliceWorker *)palloc0(ss->nworker * sizeof(ss->workers[0]));
-        ss->memoryTreeRoots = (SerializedMemoryAccount **)palloc0(ss->nworker * sizeof(ss->memoryTreeRoots[0]));
+        ss->memoryAccounts = (MemoryAccount **)palloc0(ss->nworker * sizeof(ss->memoryAccounts[0]));
+        ss->memoryAccountCount = (MemoryAccountIdType *)palloc0(ss->nworker * sizeof(ss->memoryAccountCount[0]));
     }
 
     /* Save a copy of this SliceWorker instance in the worker array. */
@@ -729,7 +731,7 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     const char *originalSerializedMemoryAccountingStartAddress = ((const char*) hdr) +
     		hdr->memAccountTreeStartOffset;
 
-    size_t bitCount = sizeof(SerializedMemoryAccount) * hdr->memAccountTreeNodeCount;
+    size_t bitCount = sizeof(MemoryAccount) * hdr->memAccountCount;
     /*
      * We need to copy of the serialized bits. These bits have shorter lifespan
      * and can get out of scope before we finish explain analyze.
@@ -737,8 +739,8 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     void *copiedSerializedMemoryAccountingStartAddress = palloc(bitCount);
     memcpy(copiedSerializedMemoryAccountingStartAddress, originalSerializedMemoryAccountingStartAddress, bitCount);
 
-    ss->memoryTreeRoots[iworker] = MemoryAccounting_Deserialize(copiedSerializedMemoryAccountingStartAddress,
-    		hdr->memAccountTreeNodeCount);
+    ss->memoryAccounts[iworker] = (MemoryAccount *)(copiedSerializedMemoryAccountingStartAddress);
+    ss->memoryAccountCount[iworker] = hdr->memAccountCount;
 
     /* Rollup of per-worker stats into SliceSummary */
     cdbexplain_agg_upd(&ss->peakmemused, hdr->worker.peakmemused, hdr->segindex);
@@ -1464,10 +1466,10 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     	    appendStringInfoFill(str, 2*indent, ' ');
     		appendStringInfo(str, "slice %d, seg %d\n", curSliceId, iWorker);
 
-    		MemoryAccounting_ToString(&(ctx->slices[curSliceId].memoryTreeRoots[iWorker]->memoryAccount), str, indent + 1);
+    		MemoryAccounting_CombinedAccountArrayToString(ctx->slices[curSliceId].memoryAccounts[iWorker],
+    				ctx->slices[curSliceId].memoryAccountCount, str, indent + 1);
     	}
     }
-
 
     /*
      * Executor memory used by this individual node, if it allocates from a
