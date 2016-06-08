@@ -68,17 +68,18 @@ extern bool gp_dump_memory_usage;
  */
 typedef enum MemoryOwnerType
 {
+	/* Undefined represents invalid account */
+	MEMORY_OWNER_TYPE_Undefined,
+
 	/* Long-living accounts that survive reset */
-	MEMORY_OWNER_TYPE_LogicalRoot = 0,
+	MEMORY_OWNER_TYPE_START_LONG_LIVING,
+	MEMORY_OWNER_TYPE_LogicalRoot = MEMORY_OWNER_TYPE_START_LONG_LIVING,
 	MEMORY_OWNER_TYPE_SharedChunkHeader,
 	MEMORY_OWNER_TYPE_Rollover,
 	MEMORY_OWNER_TYPE_MemAccount,
 	MEMORY_OWNER_TYPE_Exec_AlienShared,
 	MEMORY_OWNER_TYPE_END_LONG_LIVING = MEMORY_OWNER_TYPE_Exec_AlienShared,
 	/* End of long-living accounts */
-
-	/* Undefined is out of range of long living, but short living ID should never be undefined */
-	MEMORY_OWNER_TYPE_Undefined,
 
 	/* Short-living accounts */
 	MEMORY_OWNER_TYPE_START_SHORT_LIVING,
@@ -297,9 +298,6 @@ MemoryAccounting_SaveToFile(int currentSliceId);
 
 extern uint32
 MemoryAccounting_SaveToLog(void);
-
-extern const char*
-MemoryAccounting_GetAccountName(MemoryAccountIdType memoryAccountId);
 
 extern void
 MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefix);

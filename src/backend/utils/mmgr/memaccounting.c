@@ -498,25 +498,6 @@ MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
 }
 
 /*
- * MemoryAccounting_GetAccountName
- *		Converts MemoryAccount enum values to a descriptive string for reporting
- *		purpose.
- *
- *		We use a trick to save some coding. We currently set executor node's
- *		memory accounting enum values to the same one as their plan node's
- *		enum values. That way we can just pass the plan node's enum values in
- *		the CreateMemoryAccount() call.
- *
- * memoryAccount: The account whose name will be generated
- */
-const char*
-MemoryAccounting_GetAccountName(MemoryAccountIdType memoryAccountId)
-{
-	MemoryOwnerType ownerType = MemoryAccounting_ConvertIdToAccount(memoryAccountId)->ownerType;
-	return MemoryAccounting_GetOwnerName(ownerType);
-}
-
-/*
  * MemoryAccounting_Serialize
  * 		Serializes the current memory accounting tree into the "buffer"
  */
@@ -525,6 +506,7 @@ MemoryAccounting_Serialize(StringInfoData *buffer)
 {
 	START_MEMORY_ACCOUNT(MEMORY_OWNER_TYPE_MemAccount);
 	{
+		/* Ignore undefined account */
 		for (MemoryAccountIdType longIdx = MEMORY_OWNER_TYPE_LogicalRoot; longIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longIdx++)
 		{
 			MemoryAccount *longLivingAccount = MemoryAccounting_ConvertIdToAccount(longIdx);
@@ -538,7 +520,7 @@ MemoryAccounting_Serialize(StringInfoData *buffer)
 		}
 	}
 	END_MEMORY_ACCOUNT();
-	return MEMORY_OWNER_TYPE_END_LONG_LIVING + 1 + shortLivingMemoryAccountArray->accountCount;
+	return MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount;
 }
 
 /*
@@ -615,10 +597,10 @@ MemoryAccounting_PrettyPrint()
 	StringInfoData memBuf;
 	initStringInfo(&memBuf);
 
-	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot],
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Undefined],
 			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
 
-	MemoryAccounting_ToString(tree, &memBuf, 0);
+	MemoryAccounting_ToString(&tree[MEMORY_OWNER_TYPE_LogicalRoot], &memBuf, 0);
 
 	elog(WARNING, "%s\n", memBuf.data);
 
@@ -633,15 +615,18 @@ void
 MemoryAccounting_CombinedAccountArrayToString(MemoryAccount *combinedArray,
 		MemoryAccountIdType accountCount, StringInfoData *str, uint32 indentation)
 {
-	MemoryAccount **combinedArrayOfPointers = palloc(sizeof(MemoryAccount *) * accountCount);
+	/* 1 extra account pointer to reserve for undefined account */
+	MemoryAccount **combinedArrayOfPointers = palloc(sizeof(MemoryAccount *) * (accountCount + 1));
+	combinedArrayOfPointers[MEMORY_OWNER_TYPE_Undefined] = NULL;
+
 	for (MemoryAccountIdType idx = 0; idx < accountCount; idx++)
 	{
-		combinedArrayOfPointers[idx] = &combinedArray[idx];
+		combinedArrayOfPointers[idx + 1] = &combinedArray[idx];
 	}
-	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&combinedArrayOfPointers[0],
-			&combinedArrayOfPointers[MEMORY_OWNER_TYPE_START_SHORT_LIVING], accountCount);
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&combinedArrayOfPointers[MEMORY_OWNER_TYPE_Undefined],
+			&combinedArrayOfPointers[MEMORY_OWNER_TYPE_START_SHORT_LIVING], accountCount - MEMORY_OWNER_TYPE_END_LONG_LIVING);
 
-	MemoryAccounting_ToString(tree, str, indentation);
+	MemoryAccounting_ToString(&tree[MEMORY_OWNER_TYPE_LogicalRoot], str, indentation);
 
 	pfree(tree);
 	pfree(combinedArrayOfPointers);
@@ -667,9 +652,9 @@ MemoryAccounting_SaveToFile(int currentSliceId)
 		memory_profiler_dataset_size, statement_mem, gp_session_id, GetCurrentStatementStartTimestamp(),
 		currentSliceId, GpIdentity.segindex);
 
-	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot],
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Undefined],
 			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
-	MemoryAccounting_ToCSV(tree, &memBuf, prefix.data);
+	MemoryAccounting_ToCSV(&tree[MEMORY_OWNER_TYPE_LogicalRoot], &memBuf, prefix.data);
 	SaveMemoryBufToDisk(&memBuf, prefix.data);
 
 	pfree(prefix.data);
@@ -706,10 +691,10 @@ MemoryAccounting_SaveToLog()
     		totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */, MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */, MemoryAccountingPeakBalance /* Current */);
 
-	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot],
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Undefined],
 			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
 
-	MemoryAccountTreeWalkNode(tree, MemoryAccountToLog, &cxt, 0, &totalWalked, totalWalked);
+	MemoryAccountTreeWalkNode(&tree[MEMORY_OWNER_TYPE_LogicalRoot], MemoryAccountToLog, &cxt, 0, &totalWalked, totalWalked);
 
 	pfree(tree);
 	return totalWalked;
@@ -946,10 +931,11 @@ AddChild(MemoryAccountTree *treeArray, MemoryAccount *childAccount, MemoryAccoun
 static MemoryAccountTree*
 ConvertMemoryAccountArrayToTree(MemoryAccount** longLiving, MemoryAccount** shortLiving, MemoryAccountIdType shortLivingCount)
 {
-	// caller is in charge to free
+	// caller is in charge to free. 1 extra entry for "undefined" account
 	MemoryAccountTree *treeArray = MemoryContextAllocZero(MemoryAccountMemoryContext, sizeof(MemoryAccountTree) *
-			(shortLivingCount + MEMORY_OWNER_TYPE_END_LONG_LIVING));
+			(shortLivingCount + MEMORY_OWNER_TYPE_END_LONG_LIVING + 1));
 
+	/* Ignore "undefined" account in the tree */
 	for (MemoryAccountIdType longLivingArrayIdx = MEMORY_OWNER_TYPE_LogicalRoot;
 			longLivingArrayIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingArrayIdx++)
 	{
@@ -986,6 +972,8 @@ ConvertMemoryAccountArrayToTree(MemoryAccount** longLiving, MemoryAccount** shor
 		}
 	}
 
+	/* The children adding process shouldn't touch the reserved undefined account tree node */
+	Assert(treeArray[MEMORY_OWNER_TYPE_Undefined].account == NULL);
 	return treeArray;
 }
 
@@ -1095,7 +1083,7 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
 
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
     appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
-		MemoryAccounting_GetAccountName(memoryAccount->id),
+    	MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
 		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
 
     memAccountCxt->memoryAccountCount++;
@@ -1162,7 +1150,7 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 
 	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", MemoryAccounting_GetAccountName(memoryAccount->id),
+    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
     		curWalkSerial /* Child walk serial */, parentWalkSerial /* Parent walk serial */,
 			(int64) memoryAccount->maxLimit /* Quota */,
 			memoryAccount->peak /* Peak */,
