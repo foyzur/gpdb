@@ -1467,7 +1467,7 @@ cdbexplain_showExecStats(struct PlanState              *planstate,
     		appendStringInfo(str, "slice %d, seg %d\n", curSliceId, iWorker);
 
     		MemoryAccounting_CombinedAccountArrayToString(ctx->slices[curSliceId].memoryAccounts[iWorker],
-    				ctx->slices[curSliceId].memoryAccountCount, str, indent + 1);
+    				ctx->slices[curSliceId].memoryAccountCount[iWorker], str, indent + 1);
     	}
     }
 
