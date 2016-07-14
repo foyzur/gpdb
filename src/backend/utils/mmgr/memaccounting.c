@@ -1006,6 +1006,7 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
 
     appendStringInfoFill(memAccountCxt->buffer, 2 * depth, ' ');
 
+    Assert(memoryAccount->peak >= MemoryAccounting_GetBalance(memoryAccount->id));
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
     appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
     	MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
