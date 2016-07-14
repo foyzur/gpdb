@@ -149,74 +149,9 @@ typedef enum MemoryOwnerType
 #define MEMORY_STAT_TYPE_MEMORY_ACCOUNTING_PEAK -2
 /***************************************************************************/
 
-struct MemoryAccount;
-struct MemoryAccountArray;
-
-extern struct MemoryAccount* SharedChunkHeadersMemoryAccount;
-
-extern uint64 MemoryAccountingOutstandingBalance;
-extern uint64 MemoryAccountingPeakBalance;
-
 typedef uint64 MemoryAccountIdType;
 
-// Array of accounts available
-extern struct MemoryAccountArray* shortLivingMemoryAccountArray;
-extern struct MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING + 1];
-
 extern MemoryAccountIdType ActiveMemoryAccountId;
-
-/* MemoryAccount is the fundamental data structure to record memory usage */
-typedef struct MemoryAccount {
-	NodeTag type;
-	MemoryOwnerType ownerType;
-
-	uint64 allocated;
-	uint64 freed;
-	uint64 peak;
-	/*
-	 * Maximum targeted allocation for an owner. Peak usage can be tracked to
-	 * check if the allocation is overshooting
-	 */
-	uint64 maxLimit;
-
-	MemoryAccountIdType id;
-	MemoryAccountIdType parentId;
-} MemoryAccount;
-
-typedef struct MemoryAccountTree {
-	MemoryAccount *account;
-	struct MemoryAccountTree *firstChild;
-	struct MemoryAccountTree *nextSibling;
-} MemoryAccountTree;
-
-typedef struct MemoryAccountArray{
-	MemoryAccountIdType accountCount;
-	MemoryAccountIdType arraySize;
-	// array of pointers to memory accounts of size accountCount
-	MemoryAccount** allAccounts;
-} MemoryAccountArray;
-//
-///*
-// * Instead of pointers to construct the tree, the SerializedMemoryAccount
-// * uses "serial" of each node and saves parent serial to construct the tree.
-// * This is required as we cannot serialize pointers. As an optimization, we
-// * can later on try to reuse the pointers themselves and treat them as integer
-// * to save the "serial"
-// */
-//typedef struct SerializedMemoryAccount {
-//	NodeTag type;
-//	MemoryAccount memoryAccount;
-//
-//	/*
-//	 * memoryAccountSerial and parentMemoryAccountSerial are used for serializing
-//	 * MemoryAccount. Note: we cannot serialize the tree using the pointers.
-//	 * Instead we serialize these "serial" and "parent serial" and construct the
-//	 * tree at the destination (e.g., dispatcher or any reporting tool).
-//	 */
-//	uint32 memoryAccountSerial;
-//	/* If memoryAccountSerial == parentMemoryAccountSerial, then the node has NO parent */
-//	uint32 parentMemoryAccountSerial;
-//} SerializedMemoryAccount;
 
 /*
  * START_MEMORY_ACCOUNT would switch to the specified newMemoryAccount,
@@ -264,18 +199,11 @@ MemoryAccounting_CreateAccount(long maxLimit, enum MemoryOwnerType ownerType);
 extern MemoryAccountIdType
 MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId);
 
+extern size_t
+MemoryAccounting_SizeOfAccountInBytes(void);
+
 extern void
 MemoryAccounting_Reset(void);
-
-extern MemoryAccount*
-MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id);
-
-extern bool
-MemoryAccounting_Allocate(MemoryAccountIdType memoryAccountId,
-		struct MemoryContextData *context, Size allocatedSize);
-
-extern bool
-MemoryAccounting_Free(MemoryAccountIdType memoryAccountId, struct MemoryContextData *context, Size allocatedSize);
 
 extern uint32
 MemoryAccounting_Serialize(StringInfoData* buffer);
@@ -284,13 +212,13 @@ extern uint64
 MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId);
 
 extern uint64
-MemoryAccounting_GetBalance(MemoryAccount *memoryAccount);
+MemoryAccounting_GetBalance(MemoryAccountIdType memoryAccountId);
+
+extern uint64
+MemoryAccounting_GetGlobalPeak(void);
 
 extern void
-MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation);
-
-extern void
-MemoryAccounting_CombinedAccountArrayToString(MemoryAccount *combinedArray,
+MemoryAccounting_CombinedAccountArrayToString(void *accountArrayBytes,
 		MemoryAccountIdType accountCount, StringInfoData *str, uint32 indentation);
 
 extern void
@@ -300,21 +228,6 @@ extern uint32
 MemoryAccounting_SaveToLog(void);
 
 extern void
-MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefix);
-
-extern void
 MemoryAccounting_PrettyPrint(void);
-
-extern bool
-MemoryAccounting_IsValidAccount(MemoryAccountIdType id);
-
-
-/*
- * MemoryAccountIsValid
- *		True iff memory account is valid.
- */
-#define MemoryAccountIdIsValid(memoryAccount) \
-	((memoryAccount) != NULL && \
-	 ( IsA((memoryAccount), MemoryAccount) ))
 
 #endif   /* MEMACCOUNTING_H */

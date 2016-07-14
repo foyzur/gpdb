@@ -101,7 +101,6 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->tupDesc = NULL;
 	qd->estate = NULL;
 	qd->planstate = NULL;
-	qd->memoryAccount = NULL;
 
 	qd->extended_query = false; /* default value */
 	qd->portal_name = NULL;

@@ -131,7 +131,7 @@ typedef struct CdbExplain_SliceSummary
     int             segindex0;      /* segment id of workers[0] */
     CdbExplain_SliceWorker *workers;    /* -> array [0..nworker-1] of SliceWorker */
 
-    MemoryAccount **memoryAccounts; /* Array of memory accounts array, one array per worker [0...nworker-1] */
+    void **memoryAccounts; /* Array of pointers to memory accounts array, one array per worker [0...nworker-1] */
     MemoryAccountIdType *memoryAccountCount; /* Memory account count for each slice */
 
     CdbExplain_Agg  peakmemused; /* Summary of SliceWorker stats over all of the slice's workers */
@@ -541,7 +541,7 @@ cdbexplain_recvExecStats(struct PlanState              *planstate,
         if ((size_t)statcell->len < sizeof(*hdr) ||
             (size_t)statcell->len != (sizeof(*hdr) - sizeof(hdr->inst) +
             							hdr->nInst * sizeof(hdr->inst) +
-            							hdr->memAccountCount * sizeof(MemoryAccount) +
+            							hdr->memAccountCount * MemoryAccounting_SizeOfAccountInBytes() +
             							hdr->enotes - hdr->bnotes) ||
             statcell->len != hdr->enotes ||
             hdr->segindex < -1 ||
@@ -663,7 +663,7 @@ cdbexplain_collectSliceStats(PlanState                 *planstate,
 
     out_worker->vmem_reserved = (double) VmemTracker_GetMaxReservedVmemBytes();
 
-    out_worker->memory_accounting_global_peak = (double) MemoryAccountingPeakBalance;
+    out_worker->memory_accounting_global_peak = (double) MemoryAccounting_GetGlobalPeak();
 
 }                               /* cdbexplain_collectSliceStats */
 
@@ -717,7 +717,7 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
         ss->segindex0 = recvstatctx->segindexMin;
         ss->nworker = recvstatctx->segindexMax + 1 - ss->segindex0;
         ss->workers = (CdbExplain_SliceWorker *)palloc0(ss->nworker * sizeof(ss->workers[0]));
-        ss->memoryAccounts = (MemoryAccount **)palloc0(ss->nworker * sizeof(ss->memoryAccounts[0]));
+        ss->memoryAccounts = (void **)palloc0(ss->nworker * sizeof(ss->memoryAccounts[0]));
         ss->memoryAccountCount = (MemoryAccountIdType *)palloc0(ss->nworker * sizeof(ss->memoryAccountCount[0]));
     }
 
@@ -731,7 +731,7 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     const char *originalSerializedMemoryAccountingStartAddress = ((const char*) hdr) +
     		hdr->memAccountTreeStartOffset;
 
-    size_t bitCount = sizeof(MemoryAccount) * hdr->memAccountCount;
+    size_t bitCount = MemoryAccounting_SizeOfAccountInBytes() * hdr->memAccountCount;
     /*
      * We need to copy of the serialized bits. These bits have shorter lifespan
      * and can get out of scope before we finish explain analyze.
@@ -739,7 +739,7 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     void *copiedSerializedMemoryAccountingStartAddress = palloc(bitCount);
     memcpy(copiedSerializedMemoryAccountingStartAddress, originalSerializedMemoryAccountingStartAddress, bitCount);
 
-    ss->memoryAccounts[iworker] = (MemoryAccount *)(copiedSerializedMemoryAccountingStartAddress);
+    ss->memoryAccounts[iworker] = copiedSerializedMemoryAccountingStartAddress;
     ss->memoryAccountCount[iworker] = hdr->memAccountCount;
 
     /* Rollup of per-worker stats into SliceSummary */

@@ -74,6 +74,8 @@
 #include "utils/dynahash.h"
 #include "utils/hsearch.h"
 
+#include "utils/memaccounting_private.h"
+
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
 
@@ -355,14 +357,6 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 	}
 }
 
-static bool IsQualifiedLeak(uint16 gen_lag)
-{
-	// TODO: This is invalid check if we have generation overflow, as
-	// everything will qualify as leak and the live counter can also overflow
-	//uint16 live = MemoryAccountingCurrentGeneration - generation + 1; // Adding 1 to compensate for last generation detection
-	return leak_detection_level != 0 && (leak_detection_level >= gen_lag + 1);
-}
-
 inline void
 AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader) __attribute__((always_inline));
 
@@ -401,8 +395,7 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 */
 		if (chunk->sharedHeader->memoryAccountId != MEMORY_OWNER_TYPE_Undefined)
 		{
-			MemoryAccounting_Free(chunk->sharedHeader->memoryAccountId,
-				(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Free(chunk->sharedHeader->memoryAccountId, chunk->size + ALLOC_CHUNKHDRSZ);
 
 			if (chunk->sharedHeader->balance == 0)
 			{
@@ -453,7 +446,7 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 * charged against SharedChunkMemoryAccount, and that result in a
 		 * negative balance for SharedChunkMemoryAccount.
 		 */
-		MemoryAccounting_Free(MEMORY_OWNER_TYPE_SharedChunkHeader, (MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+		MemoryAccounting_Free(MEMORY_OWNER_TYPE_SharedChunkHeader, chunk->size + ALLOC_CHUNKHDRSZ);
 	}
 
 #ifdef CDB_PALLOC_TAGS
@@ -541,8 +534,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 			desiredHeader->balance += (chunk->size + ALLOC_CHUNKHDRSZ);
 			chunk->sharedHeader = desiredHeader;
 
-			MemoryAccounting_Allocate(ActiveMemoryAccountId,
-				(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(ActiveMemoryAccountId, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 		else
 		{
@@ -585,8 +577,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 */
 		if (SharedChunkHeadersMemoryAccount != NULL)
 		{
-			MemoryAccounting_Allocate(MEMORY_OWNER_TYPE_SharedChunkHeader,
-					(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(MEMORY_OWNER_TYPE_SharedChunkHeader, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 
 		/*
@@ -831,8 +822,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 			curHeader = curHeader->next)
 	{
 		Assert(curHeader->balance > 0);
-		MemoryAccounting_Free(curHeader->memoryAccountId,
-				context, curHeader->balance);
+		MemoryAccounting_Free(curHeader->memoryAccountId, curHeader->balance);
 
 		AllocChunk chunk = AllocPointerGetChunk(curHeader);
 
@@ -843,8 +833,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 	 * In addition to releasing accounting for the chunks, we also need
 	 * to release accounting for the shared headers
 	 */
-	MemoryAccounting_Free(MEMORY_OWNER_TYPE_SharedChunkHeader,
-		context, sharedHeaderMemoryOverhead);
+	MemoryAccounting_Free(MEMORY_OWNER_TYPE_SharedChunkHeader, sharedHeaderMemoryOverhead);
 
 	/*
 	 * Wipe off the sharedHeaderList. We don't free any memory here,

@@ -4337,7 +4337,7 @@ PostgresMain(int argc, char *argv[],
 	volatile bool send_ready_for_query = true;
 	int			topErrLevel;
 
-	MemoryAccount *postgresMainMemoryAccount = NULL;
+	MemoryAccountIdType postgresMainMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
 	
         /*
 	 * CDB: Catch program error signals.
@@ -4368,8 +4368,8 @@ PostgresMain(int argc, char *argv[],
 	 * In that case, we risk switching to a stale memoryAccount that is no
 	 * longer valid. This is because we reset the memory accounts frequently.
 	 */
-	postgresMainMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MainEntry);
-	MemoryAccounting_SwitchAccount(postgresMainMemoryAccount);
+	postgresMainMemoryAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MainEntry);
+	MemoryAccounting_SwitchAccount(postgresMainMemoryAccountId);
 
 	set_ps_display("startup", false);
 
@@ -4804,12 +4804,12 @@ PostgresMain(int argc, char *argv[],
 			 */
 			MemoryAccounting_Reset();
 
-			postgresMainMemoryAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MainEntry);
+			postgresMainMemoryAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_MainEntry);
 			/*
 			 * Don't attempt to save previous memory account. This will be invalid by the time we attempt to restore.
 			 * This is why we are not using our START_MEMORY_ACCOUNT and END_MEMORY_ACCOUNT macros
 			 */
-			MemoryAccounting_SwitchAccount(postgresMainMemoryAccount);
+			MemoryAccounting_SwitchAccount(postgresMainMemoryAccountId);
 
 			/* End of memory accounting setup */
 		//}
@@ -4898,11 +4898,6 @@ PostgresMain(int argc, char *argv[],
 			if (IdleSessionGangTimeout > 0 && gangsExist())
 				if (!enable_sig_alarm( IdleSessionGangTimeout /* ms */, false))
 					elog(FATAL, "could not set timer for client wait timeout");
-		}
-
-		if (Gp_segment == -1 && leak_detection_level != 0)
-		{
-			elog(WARNING, "Balance: %ld", MemoryAccountingOutstandingBalance);
 		}
 
 		IdleTracker_DeactivateProcess();

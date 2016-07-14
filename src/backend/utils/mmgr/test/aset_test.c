@@ -10,6 +10,9 @@
 extern MemoryAccount *MemoryAccountTreeLogicalRoot;
 extern MemoryAccount *TopMemoryAccount;
 extern MemoryAccount *MemoryAccountMemoryAccount;
+extern MemoryAccount *MemoryAccountTreeLogicalRoot;
+extern MemoryAccount *RolloverMemoryAccount;
+extern MemoryAccount *AlienExecutorMemoryAccount;
 
 #define PG_RE_THROW() siglongjmp(*PG_exception_stack, 1)
 
@@ -56,9 +59,10 @@ TeardownMemoryDataStructures(void **state)
 	MemoryAccountMemoryAccount = NULL;
 	RolloverMemoryAccount = NULL;
 	SharedChunkHeadersMemoryAccount = NULL;
-	ActiveMemoryAccount = NULL;
 	AlienExecutorMemoryAccount = NULL;
 	MemoryAccountMemoryContext = NULL;
+
+	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_MemAccount;
 }
 
 /*
@@ -75,7 +79,7 @@ test__MemoryAccounting_Allocate__ChargesOnlyActiveAccount(void **state)
 	/* Make sure we have a new active account other than Rollover */
 	MemoryAccount *oldActiveAccount = MemoryAccounting_SwitchAccount(newActiveAccount);
 
-	assert_true(ActiveMemoryAccount == newActiveAccount);
+	assert_true(ActiveMemoryAccountId == newActiveAccount->id);
 
 	uint64 prevOutstanding = MemoryAccountingOutstandingBalance;
 
@@ -148,14 +152,15 @@ test__MemoryAccounting_Allocate__AdjustsPeak(void **state)
 void
 test__MemoryAccounting_Free__FreesOldGenFromRollover(void **state)
 {
-	assert_true(ActiveMemoryAccount == TopMemoryAccount);
+	assert_true(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Top);
 
-	uint64 activeBalance = ActiveMemoryAccount->allocated - ActiveMemoryAccount->freed;
+	MemoryAccount *activeAccount = MemoryAccounting_ConvertIdToAccount(ActiveMemoryAccountId);
+	uint64 activeBalance = activeAccount->allocated - activeAccount->freed;
 	uint64 oldRolloverBalance = RolloverMemoryAccount->allocated - RolloverMemoryAccount->freed;
 
 	void *testAlloc = palloc(NEW_ALLOC_SIZE);
 
-	assert_true(activeBalance < (ActiveMemoryAccount->allocated - ActiveMemoryAccount->freed));
+	assert_true(activeBalance < (activeAccount->allocated - activeAccount->freed));
 
 	MemoryAccounting_Reset();
 
@@ -279,13 +284,10 @@ test__AllocAllocInfo__UsesNullAccountHeader(void **state)
 	assert_true(newSet->sharedHeaderList == NULL);
 	assert_true(newSet->nullAccountHeader == NULL);
 
-	MemoryAccount *oldActive = ActiveMemoryAccount;
-	MemoryAccount *oldShared = SharedChunkHeadersMemoryAccount;
-
 	/* Turning off memory monitoring */
-	ActiveMemoryAccount = NULL;
-	/* Also make SharedChunkHeadersMemoryAccount NULL to avoid assert failure */
-	SharedChunkHeadersMemoryAccount = NULL;
+	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
+	/* Also make SharedChunkHeadersMemoryAccount undefined to avoid assert failure */
+	SharedChunkHeadersMemoryAccount = MEMORY_OWNER_TYPE_Undefined;
 
 	/* Allocate from the new context which should trigger a nullAccountHeader creation*/
 	void *testAlloc = MemoryContextAlloc(newContext, NEW_ALLOC_SIZE);
@@ -295,9 +297,6 @@ test__AllocAllocInfo__UsesNullAccountHeader(void **state)
 
 	/* The new chunk should use the nullAccountHeader of the Aset */
 	assert_true(header->sharedHeader != NULL && header->sharedHeader == newSet->nullAccountHeader);
-
-	ActiveMemoryAccount = oldActive;
-	SharedChunkHeadersMemoryAccount = oldShared;
 
 	pfree(testAlloc);
 
@@ -507,11 +506,11 @@ test__AllocFreeInfo__SharedChunkHeadersMemoryAccountIgnoresNullHeader(void **sta
 	assert_true(newSet->sharedHeaderList == NULL);
 	assert_true(newSet->nullAccountHeader == NULL);
 
-	MemoryAccount *oldActive = ActiveMemoryAccount;
-	MemoryAccount *oldShared = SharedChunkHeadersMemoryAccount;
+	MemoryAccountIdType oldActive = ActiveMemoryAccountId;
+	MemoryAccountIdType oldShared = SharedChunkHeadersMemoryAccount;
 
 	/* Turning off memory monitoring */
-	ActiveMemoryAccount = NULL;
+	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
 
 	#ifdef USE_ASSERT_CHECKING
 	    expect_any(ExceptionalCondition,conditionName);
@@ -563,7 +562,7 @@ test__AllocFreeInfo__SharedChunkHeadersMemoryAccountIgnoresNullHeader(void **sta
 	 */
 	SharedChunkHeadersMemoryAccount = oldShared;
 	/* Activate the memory accounting */
-	ActiveMemoryAccount = oldActive;
+	ActiveMemoryAccountId = oldActive;
 
 	uint64 sharedBalance = SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed;
 
@@ -592,11 +591,11 @@ test__AllocFreeInfo__ReusesNullHeader(void **state)
 	assert_true(newSet->sharedHeaderList == NULL);
 	assert_true(newSet->nullAccountHeader == NULL);
 
-	MemoryAccount *oldActive = ActiveMemoryAccount;
+	MemoryAccountIdType oldActive = ActiveMemoryAccountId;
 	MemoryAccount *oldShared = SharedChunkHeadersMemoryAccount;
 
 	/* Turning off memory monitoring */
-	ActiveMemoryAccount = NULL;
+	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
 	/* Also make SharedChunkHeadersMemoryAccount NULL to avoid assert failure */
 	SharedChunkHeadersMemoryAccount = NULL;
 
@@ -618,7 +617,7 @@ test__AllocFreeInfo__ReusesNullHeader(void **state)
 	assert_true(header1->sharedHeader != NULL && header1->sharedHeader == newSet->nullAccountHeader &&
 			header1->sharedHeader == header2->sharedHeader);
 
-	ActiveMemoryAccount = oldActive;
+	ActiveMemoryAccountId = oldActive;
 	SharedChunkHeadersMemoryAccount = oldShared;
 
 	pfree(testAlloc1);
@@ -679,9 +678,10 @@ test__AllocFreeInfo__FreesOnlyOwnerAccount(void **state)
 
 	MemoryAccounting_SwitchAccount(oldActiveAccount);
 
-	assert_true(ActiveMemoryAccount != newAccount);
+	assert_true(ActiveMemoryAccountId != newAccount->id);
 
-	uint64 originalActiveBalance = ActiveMemoryAccount->allocated - ActiveMemoryAccount->freed;
+	MemoryAccount* activeAccount = MemoryAccounting_GetActiveMemoryAccount();
+	uint64 originalActiveBalance = activeAccount->allocated - activeAccount->freed;
 	uint64 newAccountBalance = newAccount->allocated - newAccount->freed;
 	uint64 newAccountFreed = newAccount->freed;
 	uint64 sharedFreed = SharedChunkHeadersMemoryAccount->freed;
@@ -693,7 +693,7 @@ test__AllocFreeInfo__FreesOnlyOwnerAccount(void **state)
 	 * Make sure that the active account is unchanged while the owner account
 	 * balance was reduced
 	 */
-	assert_true(ActiveMemoryAccount->allocated - ActiveMemoryAccount->freed == originalActiveBalance);
+	assert_true(activeAccount->allocated - activeAccount->freed == originalActiveBalance);
 	/* Balance was released from newAccount */
 	assert_true(newAccount->allocated - newAccount->freed <= newAccountBalance - NEW_ALLOC_SIZE);
 

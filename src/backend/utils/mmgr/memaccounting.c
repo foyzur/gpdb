@@ -20,6 +20,7 @@
 #include "access/xact.h"
 #include "miscadmin.h"
 #include "utils/vmem_tracker.h"
+#include "utils/memaccounting_private.h"
 
 #define MEMORY_REPORT_FILE_NAME_LENGTH 255
 #define SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN 64
@@ -34,8 +35,14 @@ typedef struct MemoryAccountSerializerCxt
 	char *prefix; /* Prefix to add before each line */
 } MemoryAccountSerializerCxt;
 
-static MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
-static MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+typedef struct MemoryAccountTree {
+	MemoryAccount *account;
+	struct MemoryAccountTree *firstChild;
+	struct MemoryAccountTree *nextSibling;
+} MemoryAccountTree;
+
+MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 
 /*
  ******************************************************
@@ -96,44 +103,11 @@ MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType);
 static void
 MemoryAccounting_ResetPeakBalance(void);
 
-bool
-MemoryAccounting_IsValidAccount(MemoryAccountIdType id)
-{
-	AssertImply(NULL == shortLivingMemoryAccountArray, liveAccountStartId == nextAccountId);
-	return (id < liveAccountStartId + (NULL == shortLivingMemoryAccountArray ? 0 : shortLivingMemoryAccountArray->accountCount));
-}
-
 MemoryAccount*
-MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
+MemoryAccounting_GetActiveMemoryAccount()
 {
-	MemoryAccount *memoryAccount = NULL;
-
-	if (id >= liveAccountStartId)
-	{
-		Assert(NULL != shortLivingMemoryAccountArray);
-		Assert(id < liveAccountStartId + shortLivingMemoryAccountArray->accountCount);
-		memoryAccount = shortLivingMemoryAccountArray->allAccounts[id - liveAccountStartId];
-	}
-	else if (id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
-	{
-		Assert(NULL != longLivingMemoryAccountArray);
-		/* 0 is reserved as undefined. So, the array index is 1 behind */
-		memoryAccount = longLivingMemoryAccountArray[id];
-	}
-	else if (id < liveAccountStartId)
-	{
-		Assert(NULL != longLivingMemoryAccountArray);
-		memoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
-	}
-
-	Assert(IsA(memoryAccount, MemoryAccount));
-
-	return memoryAccount;
+	return MemoryAccounting_ConvertIdToAccount(ActiveMemoryAccountId);
 }
-
-/*****************************************************************************
- * Global memory accounting variables
- */
 
 /*
  * This is the root of the memory accounting tree. All other accounts go
@@ -143,7 +117,11 @@ MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
  * and "Top" and switch to "Top". Logical root can only have two children:
  * TopMemoryAccount and RolloverMemoryAccount
  */
-MemoryAccount *MemoryAccountTreeLogicalRoot = NULL;
+static MemoryAccount *MemoryAccountTreeLogicalRoot = NULL;
+
+/*****************************************************************************
+ * Global memory accounting variables, some are only visible via memaccounting_private.h
+ */
 
 /*
  * ActiveMemoryAccountId is used by memory allocator to record the allocation.
@@ -152,6 +130,8 @@ MemoryAccount *MemoryAccountTreeLogicalRoot = NULL;
 MemoryAccountIdType ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
 /* MemoryAccountMemoryAccount saves the memory overhead of memory accounting itself */
 MemoryAccount *MemoryAccountMemoryAccount = NULL;
+
+// Array of accounts available
 MemoryAccountArray* shortLivingMemoryAccountArray = NULL;
 MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING + 1] = {NULL};
 
@@ -220,79 +200,6 @@ MemoryAccounting_Reset()
 }
 
 /*
- * MemoryAccounting_Allocate
- *	 	When an allocation is made, this function will be called by the
- *	 	underlying allocator to record allocation request.
- *
- * memoryAccount: where to record this allocation
- * context: the context where this memory belongs
- * allocatedSize: the final amount of memory returned by the allocator (with overhead)
- *
- * If the return value is false, the underlying memory allocator should fail.
- */
-bool
-MemoryAccounting_Allocate(MemoryAccountIdType memoryAccountId,
-		struct MemoryContextData *context, Size allocatedSize)
-{
-	Assert(MemoryAccounting_IsValidAccount(memoryAccountId));
-	MemoryAccount* memoryAccount = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
-
-	Assert(memoryAccount->allocated + allocatedSize >=
-			memoryAccount->allocated);
-
-	memoryAccount->allocated += allocatedSize;
-
-	Size held = memoryAccount->allocated -
-			memoryAccount->freed;
-
-	memoryAccount->peak =
-			Max(memoryAccount->peak, held);
-
-	Assert(memoryAccount->allocated >=
-			memoryAccount->freed);
-
-	MemoryAccountingOutstandingBalance += allocatedSize;
-	MemoryAccountingPeakBalance = Max(MemoryAccountingPeakBalance, MemoryAccountingOutstandingBalance);
-
-	return true;
-}
-
-/*
- * MemoryAccounting_Free
- *		"One" implementation of free request handler. Each memory account
- *		can customize its free request function. When memory is deallocated,
- *		this function will be called by the underlying allocator to record deallocation.
- *		This function records the amount of memory freed.
- *
- * memoryAccount: where to record this allocation
- * context: the context where this memory belongs
- * allocatedSize: the final amount of memory returned by the allocator (with overhead)
- *
- * Note: the memoryAccount can be an invalid pointer if the generation of
- * the allocation is different than the current generation. In such case
- * this method would automatically select RolloverMemoryAccount, instead
- * of accessing an invalid pointer.
- */
-bool
-MemoryAccounting_Free(MemoryAccountIdType memoryAccountId, struct MemoryContextData *context, Size allocatedSize)
-{
-	MemoryAccount* memoryAccount = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
-
-	Assert(memoryAccount->freed +
-			allocatedSize >= memoryAccount->freed);
-
-	Assert(memoryAccount->allocated >= memoryAccount->freed);
-
-	memoryAccount->freed += allocatedSize;
-
-	MemoryAccountingOutstandingBalance -= allocatedSize;
-
-	Assert(MemoryAccountingOutstandingBalance >= 0);
-
-	return true;
-}
-
-/*
  * MemoryAccounting_ResetPeakBalance
  *		Resets the peak memory account balance by setting it to the current balance.
  */
@@ -347,6 +254,12 @@ MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
 	return oldAccountId;
 }
 
+size_t
+MemoryAccounting_SizeOfAccountInBytes()
+{
+	return sizeof(MemoryAccount);
+}
+
 /*
  * MemoryAccounting_GetPeak
  *		Returns peak memory
@@ -366,10 +279,21 @@ MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId)
  * memoryAccount: The concerned account.
  */
 uint64
-MemoryAccounting_GetBalance(MemoryAccount * memoryAccount)
+MemoryAccounting_GetBalance(MemoryAccountIdType memoryAccountId)
 {
-	return memoryAccount->allocated -
-			memoryAccount->freed;
+	MemoryAccount* account = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
+	Assert(NULL != account);
+	return account->allocated - account->freed;
+}
+
+/*
+ * MemoryAccounting_GetGlobalPeak
+ *		Returns global peak balance across all accounts
+ */
+uint64
+MemoryAccounting_GetGlobalPeak()
+{
+	return MemoryAccountingPeakBalance;
 }
 
 static const char*
@@ -612,9 +536,10 @@ MemoryAccounting_PrettyPrint()
  *    Converts a unified array of long and short living accounts to string.
  */
 void
-MemoryAccounting_CombinedAccountArrayToString(MemoryAccount *combinedArray,
+MemoryAccounting_CombinedAccountArrayToString(void *accountArrayBytes,
 		MemoryAccountIdType accountCount, StringInfoData *str, uint32 indentation)
 {
+	MemoryAccount *combinedArray = (MemoryAccount *) accountArrayBytes;
 	/* 1 extra account pointer to reserve for undefined account */
 	MemoryAccount **combinedArrayOfPointers = palloc(sizeof(MemoryAccount *) * (accountCount + 1));
 	combinedArrayOfPointers[MEMORY_OWNER_TYPE_Undefined] = NULL;
@@ -1084,7 +1009,7 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
     appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
     	MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
-		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
+		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount->id), memoryAccount->maxLimit);
 
     memAccountCxt->memoryAccountCount++;
 
