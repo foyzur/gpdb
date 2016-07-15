@@ -103,6 +103,9 @@ MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType);
 static void
 MemoryAccounting_ResetPeakBalance(void);
 
+static uint64
+MemoryAccounting_GetBalance(MemoryAccount* memoryAccount);
+
 MemoryAccount*
 MemoryAccounting_GetActiveMemoryAccount()
 {
@@ -279,11 +282,9 @@ MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId)
  * memoryAccount: The concerned account.
  */
 uint64
-MemoryAccounting_GetBalance(MemoryAccountIdType memoryAccountId)
+MemoryAccounting_GetBalance(MemoryAccount* memoryAccount)
 {
-	MemoryAccount* account = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
-	Assert(NULL != account);
-	return account->allocated - account->freed;
+	return memoryAccount->allocated - memoryAccount->freed;
 }
 
 /*
@@ -1006,11 +1007,11 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
 
     appendStringInfoFill(memAccountCxt->buffer, 2 * depth, ' ');
 
-    Assert(memoryAccount->peak >= MemoryAccounting_GetBalance(memoryAccount->id));
+    Assert(memoryAccount->peak >= MemoryAccounting_GetBalance(memoryAccount));
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
     appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
     	MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
-		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount->id), memoryAccount->maxLimit);
+		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
 
     memAccountCxt->memoryAccountCount++;
 

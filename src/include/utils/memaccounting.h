@@ -212,9 +212,6 @@ extern uint64
 MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId);
 
 extern uint64
-MemoryAccounting_GetBalance(MemoryAccountIdType memoryAccountId);
-
-extern uint64
 MemoryAccounting_GetGlobalPeak(void);
 
 extern void
