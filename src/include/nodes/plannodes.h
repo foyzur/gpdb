@@ -21,8 +21,6 @@
 #include "nodes/primnodes.h"
 #include "storage/itemptr.h"
 
-typedef struct PartitionSelector PartitionSelector;
-
 typedef struct DirectDispatchInfo
 {
      /**
@@ -380,8 +378,6 @@ typedef struct Sequence
 {
 	Plan plan;
 	List *subplans;
-
-	PartitionSelector *static_selector;
 } Sequence;
 
 /* ----------------

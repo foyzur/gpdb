@@ -42,8 +42,6 @@ struct FileScanDescData;
 struct MirroredBufferPoolBulkLoadInfo;
 struct SliceTable;
 
-typedef struct PartitionSelectorState PartitionSelectorState;
-
 /* ----------------
  *	  IndexInfo information
  *
@@ -1526,8 +1524,6 @@ typedef struct SequenceState
 	PlanState	ps;
 	PlanState **subplans;
 	int			numSubplans;
-
-	PartitionSelectorState *static_selector;
 
 	/*
 	 * True if no subplan has been executed.
