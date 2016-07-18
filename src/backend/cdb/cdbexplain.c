@@ -804,7 +804,7 @@ cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ct
     si->workmemused     = instr->workmemused;
     si->workmemwanted   = instr->workmemwanted;
     si->workfileCreated  = instr->workfileCreated;
-	si->peakMemBalance	 = MemoryAccounting_GetPeak(planstate->plan->memoryAccountId);
+	si->peakMemBalance	 = MemoryAccounting_GetAccountPeakBalance(planstate->plan->memoryAccountId);
 	si->firststart      = instr->firststart;
 	si->numPartScanned = instr->numPartScanned;
 }                               /* cdbexplain_collectStatsFromNode */

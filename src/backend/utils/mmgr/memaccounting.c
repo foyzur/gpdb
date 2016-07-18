@@ -106,12 +106,6 @@ MemoryAccounting_ResetPeakBalance(void);
 static uint64
 MemoryAccounting_GetBalance(MemoryAccount* memoryAccount);
 
-MemoryAccount*
-MemoryAccounting_GetActiveMemoryAccount()
-{
-	return MemoryAccounting_ConvertIdToAccount(ActiveMemoryAccountId);
-}
-
 /*
  * This is the root of the memory accounting tree. All other accounts go
  * under this node. We call it "logical root" as no one should ever use it
@@ -120,7 +114,7 @@ MemoryAccounting_GetActiveMemoryAccount()
  * and "Top" and switch to "Top". Logical root can only have two children:
  * TopMemoryAccount and RolloverMemoryAccount
  */
-static MemoryAccount *MemoryAccountTreeLogicalRoot = NULL;
+MemoryAccount *MemoryAccountTreeLogicalRoot = NULL;
 
 /*****************************************************************************
  * Global memory accounting variables, some are only visible via memaccounting_private.h
@@ -264,15 +258,28 @@ MemoryAccounting_SizeOfAccountInBytes()
 }
 
 /*
- * MemoryAccounting_GetPeak
+ * MemoryAccounting_GetAccountPeakBalance
  *		Returns peak memory
  *
  * memoryAccountId: The concerned account.
  */
 uint64
-MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId)
+MemoryAccounting_GetAccountPeakBalance(MemoryAccountIdType memoryAccountId)
 {
 	return MemoryAccounting_ConvertIdToAccount(memoryAccountId)->peak;
+}
+
+/*
+ * MemoryAccounting_GetAccountCurrentBalance
+ *		Returns current memory
+ *
+ * memoryAccountId: The concerned account.
+ */
+uint64
+MemoryAccounting_GetAccountCurrentBalance(MemoryAccountIdType memoryAccountId)
+{
+	MemoryAccount *account = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
+	return account->allocated - account->freed;
 }
 
 /*

@@ -209,7 +209,10 @@ extern uint32
 MemoryAccounting_Serialize(StringInfoData* buffer);
 
 extern uint64
-MemoryAccounting_GetPeak(MemoryAccountIdType memoryAccountId);
+MemoryAccounting_GetAccountPeakBalance(MemoryAccountIdType memoryAccountId);
+
+extern uint64
+MemoryAccounting_GetAccountCurrentBalance(MemoryAccountIdType memoryAccountId);
 
 extern uint64
 MemoryAccounting_GetGlobalPeak(void);
@@ -226,5 +229,6 @@ MemoryAccounting_SaveToLog(void);
 
 extern void
 MemoryAccounting_PrettyPrint(void);
+
 
 #endif   /* MEMACCOUNTING_H */
