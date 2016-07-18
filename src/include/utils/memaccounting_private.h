@@ -54,7 +54,9 @@ static inline bool
 MemoryAccounting_IsValidAccount(MemoryAccountIdType id)
 {
 	AssertImply(NULL == shortLivingMemoryAccountArray, liveAccountStartId == nextAccountId);
-	return (id < liveAccountStartId + (NULL == shortLivingMemoryAccountArray ? 0 : shortLivingMemoryAccountArray->accountCount));
+	return ((id >= liveAccountStartId &&
+			id < (liveAccountStartId + (NULL == shortLivingMemoryAccountArray ? 0 : shortLivingMemoryAccountArray->accountCount))) ||
+			((id <= MEMORY_OWNER_TYPE_END_LONG_LIVING) && id > MEMORY_OWNER_TYPE_Undefined));
 }
 
 static inline MemoryAccount*
