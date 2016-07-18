@@ -546,7 +546,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 				 * SharedChunkHeadersMemoryAccount comes to life first. So, if
 				 * ActiveMemoryAccount is NULL, so should be the SharedChunkHeadersMemoryAccount
 				 */
-				Assert(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Undefined);
+				Assert(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Undefined && NULL == SharedChunkHeadersMemoryAccount);
 
 				/* We initialize nullAccountHeader only if necessary */
 				SharedChunkHeader *desiredHeader = AllocSetAllocHeader((MemoryContext) set, sizeof(SharedChunkHeader));
