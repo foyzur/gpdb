@@ -80,7 +80,7 @@ static double elapsed_time(instr_time *starttime);
 static ErrorData *explain_defer_error(ExplainState *es);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
-				Plan *outer_plan,
+				Plan *outer_plan, Plan *parentPlan,
 				int indent, ExplainState *es);
 static void show_scan_qual(List *qual, const char *qlabel,
 			   int scanrelid, Plan *scan_plan, Plan *outer_plan,
@@ -562,7 +562,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ExplainStmt *stmt,
 			indent = 3;
 		}
 	    explain_outNode(&buf, childPlan, queryDesc->planstate,
-					    NULL, indent, es);
+					    NULL, NULL, indent, es);
     }
     PG_CATCH();
     {
@@ -825,11 +825,14 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
  * outer_plan, if not null, references another plan node that is the outer
  * side of a join with the current node.  This is only interesting for
  * deciphering runtime keys of an inner indexscan.
+ *
+ * parentPlan points to the parent plan node and can be used by PartitionSelector
+ * to deparse its printablePredicate.
  */
 static void
 explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
-				Plan *outer_plan,
+				Plan *outer_plan, Plan *parentPlan,
 				int indent, ExplainState *es)
 {
 	const char	   *pname = NULL;
@@ -1664,8 +1667,8 @@ explain_outNode(StringInfo str,
 				}
 				show_upper_qual(list_qual,
 								"Filter",
-								NULL, outerPlan(plan),
 								NULL, NULL,
+								NULL, parentPlan,
 								str, indent, es);
 				show_static_part_selection(plan, indent, str);
 			}
@@ -1724,7 +1727,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
-							NULL,
+							NULL, plan,
 							indent + 4, es);
 		}
         es->currentSlice = saved_slice;
@@ -1748,6 +1751,7 @@ explain_outNode(StringInfo str,
 						(IsA(plan, BitmapHeapScan) |
 						 IsA(plan, BitmapAppendOnlyScan) |
 						 IsA(plan, BitmapTableScan)) ? outer_plan : NULL,
+						plan,
 						indent + 3, es);
 	}
     else if (skip_outer)
@@ -1768,6 +1772,7 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, innerPlan(plan),
 						innerPlanState(planstate),
 						outerPlan(plan),
+						plan,
 						indent + 3, es);
 	}
 
@@ -1797,6 +1802,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
 							outer_plan,
+							appendplan,
 							indent + 3, es);
 			j++;
 		}
@@ -1822,6 +1828,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							sequenceState->subplans[j],
 							outer_plan,
+							plan,
 							indent + 3, es);
 			j++;
 		}
@@ -1846,6 +1853,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmapandstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
+							plan,
 							indent + 3, es);
 			j++;
 		}
@@ -1870,6 +1878,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmaporstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
+							plan,
 							indent + 3, es);
 			j++;
 		}
@@ -1888,6 +1897,7 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, subnode,
 						subquerystate->subplan,
 						NULL,
+						plan,
 						indent + 3, es);
 	}
 
@@ -1912,6 +1922,7 @@ explain_outNode(StringInfo str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
+							plan,
 							indent + 4, es);
 		}
 	}
