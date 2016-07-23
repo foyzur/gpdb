@@ -1953,9 +1953,60 @@ static bool shareinput_mutator_dag_to_tree(Node *node, PlannerGlobal *glob, bool
 		int			attno;
 		ListCell   *lc;
 
+		if (PLANGEN_OPTIMIZER == glob->planGenerator)
+		{
+			if  (NULL != subplan)
+			{
+				int share_id = siscan->share_id;
+				int min_share_count = (share_id + 1);
+
+				if (NULL == ctxt->producers)
+				{
+					ctxt->producers = palloc0(sizeof(ShareInputScan *) * min_share_count);
+					ctxt->producer_count = min_share_count;
+				}
+				else if (ctxt->producer_count < min_share_count)
+				{
+					ctxt->producers = repalloc(ctxt->producers, sizeof(ShareInputScan *) * min_share_count);
+					memset(&ctxt->producers[ctxt->producer_count], 0, (min_share_count - ctxt->producer_count) * sizeof(ShareInputScan *));
+					ctxt->producer_count = min_share_count;
+				}
+
+				Assert(ctxt->producer_count >= min_share_count);
+				Assert(ctxt->producers[share_id] == NULL);
+
+				/* This ShareInputScan has the subplan (not pruned) needed to resolve to useful column names */
+				ctxt->producers[share_id] = siscan;
+
+				attno = 1;
+				foreach(lc, subplan->targetlist)
+				{
+					TargetEntry *tle = (TargetEntry *) lfirst(lc);
+					char		buf[100];
+					Oid			vartype;
+					int32		vartypmod;
+
+					snprintf(buf, sizeof(buf), "col_%d", attno);
+
+					vartype = exprType((Node *) tle->expr);
+					vartypmod = exprTypmod((Node *) tle->expr);
+
+					siscan->colnames = lappend(siscan->colnames, get_tle_name(tle, ctxt->curr_rtable, buf));
+					siscan->coltypes = lappend_oid(siscan->coltypes, vartype);
+					siscan->coltypmods = lappend_int(siscan->coltypmods, vartypmod);
+					attno++;
+				}
+
+				Assert(list_length(ctxt->producers[share_id]->colnames) > 0);
+				return true;
+			}
+
+			return false;
+		}
+
 		Assert(subplan);
 		Assert(IsA(subplan, Material) || IsA(subplan, Sort));
-		Assert(get_plan_share_id(plan) == SHARE_ID_NOT_ASSIGNED);
+		Assert(get_plan_share_id(plan) == SHARE_ID_NOT_ASSIGNED || optimizer);
 		Assert(plan->righttree == NULL);
 		Assert(plan->initPlan == NULL);
 
@@ -2109,10 +2160,24 @@ replace_shareinput_targetlists_walker(Node *node, PlannerGlobal *glob, bool fPop
 		rte->self_reference = false;
 		rte->alias = NULL;
 
-		rte->eref = makeAlias(rte->ctename, sisc->colnames);
+		List *colnames = NULL;
+		List *coltypes = NULL;
+		List *coltypmods = NULL;
 
-		rte->ctecoltypes = sisc->coltypes;
-		rte->ctecoltypmods = sisc->coltypmods;
+		ShareInputScan *anointed = sisc;
+		if (glob->planGenerator == PLANGEN_OPTIMIZER)
+		{
+			Assert(NULL != ctxt->producers && ctxt->producer_count > share_id && NULL != ctxt->producers[share_id]);
+			anointed = ctxt->producers[share_id];
+		}
+		colnames = anointed->colnames;
+		coltypes = anointed->coltypes;
+		coltypmods = anointed->coltypmods;
+
+		rte->eref = makeAlias(rte->ctename, colnames);
+
+		rte->ctecoltypes = coltypes;
+		rte->ctecoltypmods = coltypmods;
 
 		rte->inh = false;
 		rte->inFromCl = false;

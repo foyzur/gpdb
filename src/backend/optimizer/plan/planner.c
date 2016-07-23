@@ -204,6 +204,7 @@ optimize_query(Query *parse, ParamListInfo boundParams)
 	glob->subplans = NIL;
 	glob->relationOids = NIL;
 	glob->invalItems = NIL;
+	glob->planGenerator = PLANGEN_OPTIMIZER;
 
 	/* create a local copy to hand to the optimizer */
 	pqueryCopy = (Query *) copyObject(parse);
@@ -241,6 +242,24 @@ optimize_query(Query *parse, ParamListInfo boundParams)
 	 */
 	glob->finalrtable = result->rtable;
 	glob->subplans = result->subplans;
+
+	ListCell   *lr;
+	/*
+	 * Fix sharing id and shared id.
+	 *
+	 * This must be called before set_plan_references and cdbparallelize.  The other mutator
+	 * or tree walker assumes the input is a tree.  If there is plan sharing, we have a DAG.
+	 *
+	 * apply_shareinput will fix shared_id, and change the DAG to a tree.
+	 */
+	forboth(lp, glob->subplans, lr, glob->subrtables)
+	{
+		Plan	   *subplan = (Plan *) lfirst(lp);
+		List	   *subrtable = (List *) lfirst(lr);
+
+		lfirst(lp) = apply_shareinput_dag_to_tree(glob, subplan, subrtable);
+	}
+	result->planTree = apply_shareinput_dag_to_tree(glob, result->planTree, result->rtable);
 
 	/* Post-process ShareInputScan nodes */
 	(void) apply_shareinput_xslice(result->planTree, glob);
@@ -431,6 +450,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	glob->share.qdShares = NIL;
 	glob->share.qdSlices = NIL;
 	glob->share.nextPlanId = 0;
+	glob->planGenerator = PLANGEN_PLANNER;
 
 	/* Determine what fraction of the plan is likely to be scanned */
 	if (cursorOptions & CURSOR_OPT_FAST_PLAN)
