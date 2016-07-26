@@ -1933,6 +1933,101 @@ assign_plannode_id_walker(Node *node, assign_plannode_id_walker_context *ctxt)
 	list_delete_first(ctxt->planNodes);
 }
 
+static void
+shareinput_save_producer_colnames(ShareInputScan *plan, ApplyShareInputContext *ctxt)
+{
+	Plan *subplan = plan->scan.plan.lefttree;
+	Assert(subplan != NULL && get_plan_share_id(subplan) == plan->share_id);
+
+	int attno = 1;
+	ListCell   *lc = NULL;
+
+	foreach(lc, subplan->targetlist)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(lc);
+		char		buf[100];
+		Oid			vartype;
+		int32		vartypmod;
+
+		snprintf(buf, sizeof(buf), "col_%d", attno);
+
+		vartype = exprType((Node *) tle->expr);
+		vartypmod = exprTypmod((Node *) tle->expr);
+
+		plan->colnames = lappend(plan->colnames, get_tle_name(tle, ctxt->curr_rtable, buf));
+		plan->coltypes = lappend_oid(plan->coltypes, vartype);
+		plan->coltypmods = lappend_int(plan->coltypmods, vartypmod);
+		attno++;
+	}
+}
+
+static void
+shareinput_save_producer(ShareInputScan *plan, ApplyShareInputContext *ctxt)
+{
+	Assert(plan->share_id >= 0);
+
+	int share_id = plan->share_id;
+	int min_share_count = (share_id + 1);
+
+	if (NULL == ctxt->producers)
+	{
+		ctxt->producers = palloc0(sizeof(ShareInputScan *) * min_share_count);
+	}
+	else if (ctxt->producer_count < min_share_count)
+	{
+		ctxt->producers = repalloc(ctxt->producers, sizeof(ShareInputScan *) * min_share_count);
+		memset(&ctxt->producers[ctxt->producer_count], 0, (min_share_count - ctxt->producer_count) * sizeof(ShareInputScan *));
+	}
+
+	Assert(NULL == ctxt->producers[share_id]);
+	ctxt->producer_count = min_share_count;
+	ctxt->producers[share_id] = plan;
+
+	shareinput_save_producer_colnames(plan, ctxt);
+}
+
+static bool
+process_planner_shareinput(ShareInputScan *plan, ApplyShareInputContext *ctxt)
+{
+	Plan* subplan = plan->scan.plan.lefttree;
+
+	for (int i = 0; i < ctxt->producer_count; i++)
+	{
+		if (ctxt->producers[i]->scan.plan.lefttree == subplan)
+		{
+			Assert(NULL != ctxt->producers[i] && get_plan_share_id((Plan *)ctxt->producers[i]) >= i);
+			set_plan_share_id((Plan *) plan, ctxt->producers[i]->share_id);
+			plan->scan.plan.lefttree = NULL;
+			return false;
+		}
+	}
+
+	/* Couldn't find a match in existing list of share input scan */
+	Assert(get_plan_share_id(subplan) == SHARE_ID_NOT_ASSIGNED);
+	set_plan_share_id((Plan *) plan, ctxt->producer_count);
+	set_plan_share_id(subplan, ctxt->producer_count);
+
+	shareinput_save_producer(plan, ctxt);
+	return true;
+}
+
+static bool
+process_optimizer_shareinput(ShareInputScan *plan, ApplyShareInputContext *ctxt)
+{
+	int share_id = get_plan_share_id((Plan *) plan);
+	Assert(share_id >= 0);
+
+	Plan* subplan = plan->scan.plan.lefttree;
+
+	if (subplan)
+	{
+		shareinput_save_producer(plan, ctxt);
+		return true;
+	}
+
+	return false;
+}
+
 /* 
  * DAG to Tree
  * Zap children if I am not the first sharer (not recursive down).  
@@ -1948,105 +2043,13 @@ static bool shareinput_mutator_dag_to_tree(Node *node, PlannerGlobal *glob, bool
 
 	if(IsA(plan, ShareInputScan))
 	{
-		ShareInputScan *siscan = (ShareInputScan *) plan;
-		Plan	   *subplan = plan->lefttree;
-		int			attno;
-		ListCell   *lc;
-
 		if (PLANGEN_OPTIMIZER == glob->planGenerator)
 		{
-			if  (NULL != subplan)
-			{
-				int share_id = siscan->share_id;
-				int min_share_count = (share_id + 1);
-
-				if (NULL == ctxt->producers)
-				{
-					ctxt->producers = palloc0(sizeof(ShareInputScan *) * min_share_count);
-					ctxt->producer_count = min_share_count;
-				}
-				else if (ctxt->producer_count < min_share_count)
-				{
-					ctxt->producers = repalloc(ctxt->producers, sizeof(ShareInputScan *) * min_share_count);
-					memset(&ctxt->producers[ctxt->producer_count], 0, (min_share_count - ctxt->producer_count) * sizeof(ShareInputScan *));
-					ctxt->producer_count = min_share_count;
-				}
-
-				Assert(ctxt->producer_count >= min_share_count);
-				Assert(ctxt->producers[share_id] == NULL);
-
-				/* This ShareInputScan has the subplan (not pruned) needed to resolve to useful column names */
-				ctxt->producers[share_id] = siscan;
-
-				attno = 1;
-				foreach(lc, subplan->targetlist)
-				{
-					TargetEntry *tle = (TargetEntry *) lfirst(lc);
-					char		buf[100];
-					Oid			vartype;
-					int32		vartypmod;
-
-					snprintf(buf, sizeof(buf), "col_%d", attno);
-
-					vartype = exprType((Node *) tle->expr);
-					vartypmod = exprTypmod((Node *) tle->expr);
-
-					siscan->colnames = lappend(siscan->colnames, get_tle_name(tle, ctxt->curr_rtable, buf));
-					siscan->coltypes = lappend_oid(siscan->coltypes, vartype);
-					siscan->coltypmods = lappend_int(siscan->coltypmods, vartypmod);
-					attno++;
-				}
-
-				Assert(list_length(ctxt->producers[share_id]->colnames) > 0);
-				return true;
-			}
-
-			return false;
-		}
-
-		Assert(subplan);
-		Assert(IsA(subplan, Material) || IsA(subplan, Sort));
-		Assert(get_plan_share_id(plan) == SHARE_ID_NOT_ASSIGNED || optimizer);
-		Assert(plan->righttree == NULL);
-		Assert(plan->initPlan == NULL);
-
-		/*
-		 * Before we zap the child, fill in information about the child's
-		 * targetlist, so that we can still EXPLAIN this correctly.
-		 */
-		attno = 1;
-		foreach(lc, subplan->targetlist)
-		{
-			TargetEntry *tle = (TargetEntry *) lfirst(lc);
-			char		buf[100];
-			Oid			vartype;
-			int32		vartypmod;
-
-			snprintf(buf, sizeof(buf), "col_%d", attno);
-
-			vartype = exprType((Node *) tle->expr);
-			vartypmod = exprTypmod((Node *) tle->expr);
-
-			siscan->colnames = lappend(siscan->colnames, get_tle_name(tle, ctxt->curr_rtable, buf));
-			siscan->coltypes = lappend_oid(siscan->coltypes, vartype);
-			siscan->coltypmods = lappend_int(siscan->coltypmods, vartypmod);
-			attno++;
-		}
-
-		if(list_member_ptr(ctxt->sharedNodes, subplan))
-		{
-			Assert(get_plan_share_id(subplan) >= 0);
-			set_plan_share_id(plan, get_plan_share_id(subplan));
-			plan->lefttree = NULL;
-			return false;
+			return process_optimizer_shareinput((ShareInputScan *) plan, ctxt);
 		}
 		else
 		{
-			Assert(get_plan_share_id(subplan) == SHARE_ID_NOT_ASSIGNED);
-			set_plan_share_id(subplan, list_length(ctxt->sharedNodes));
-			set_plan_share_id(plan, get_plan_share_id(subplan));
-			ctxt->sharedNodes = lappend(ctxt->sharedNodes, subplan);
-			return true;
+			return process_planner_shareinput((ShareInputScan *) plan, ctxt);
 		}
 	}
 
@@ -2164,15 +2167,12 @@ replace_shareinput_targetlists_walker(Node *node, PlannerGlobal *glob, bool fPop
 		List *coltypes = NULL;
 		List *coltypmods = NULL;
 
-		ShareInputScan *anointed = sisc;
-		if (glob->planGenerator == PLANGEN_OPTIMIZER)
-		{
-			Assert(NULL != ctxt->producers && ctxt->producer_count > share_id && NULL != ctxt->producers[share_id]);
-			anointed = ctxt->producers[share_id];
-		}
-		colnames = anointed->colnames;
-		coltypes = anointed->coltypes;
-		coltypmods = anointed->coltypmods;
+		Assert(NULL != ctxt->producers && ctxt->producer_count > share_id && NULL != ctxt->producers[share_id]);
+		ShareInputScan *producer = ctxt->producers[share_id];
+
+		colnames = producer->colnames;
+		coltypes = producer->coltypes;
+		coltypmods = producer->coltypmods;
 
 		rte->eref = makeAlias(rte->ctename, colnames);
 
@@ -2226,7 +2226,7 @@ static bool shareinput_find_sharenode(ApplyShareInputContext *ctxt, int share_id
 	ListCell *lc;
 	ListCell *lc_slicemark;
 	
-	if(ctxt->sharedNodes == NULL)
+	if(ctxt->producers == NULL)
 		return false;
 
 	forboth(lc, ctxt->sharedNodes, lc_slicemark, ctxt->sliceMarks)
