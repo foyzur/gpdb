@@ -194,6 +194,8 @@ optimize_query(Query *parse, ParamListInfo boundParams)
 	glob->rewindPlanIDs = NULL;
 	glob->transientPlan = false;
 	glob->share.sharedNodes = NIL;
+	glob->share.producers = NULL;
+	glob->share.producer_count = 0;
 	glob->share.sliceMarks = NIL;
 	glob->share.motStack = NIL;
 	glob->share.qdShares = NIL;
@@ -445,6 +447,8 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	glob->transientPlan = false;
 	/* ApplyShareInputContext initialization. */
 	glob->share.sharedNodes = NIL;
+	glob->share.producers = NULL;
+	glob->share.producer_count = 0;
 	glob->share.sliceMarks = NIL;
 	glob->share.motStack = NIL;
 	glob->share.qdShares = NIL;

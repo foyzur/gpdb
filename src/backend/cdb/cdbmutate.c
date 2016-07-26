@@ -1983,6 +1983,11 @@ shareinput_save_producer(ShareInputScan *plan, ApplyShareInputContext *ctxt)
 	ctxt->producer_count = min_share_count;
 	ctxt->producers[share_id] = plan;
 
+	/* Also add the producer's subplan in the sharedNodes as we need it for further transformation */
+	Plan *subplan = plan->scan.plan.lefttree;
+	Assert(NULL != subplan);
+	ctxt->sharedNodes = lappend(ctxt->sharedNodes, subplan);
+
 	shareinput_save_producer_colnames(plan, ctxt);
 }
 
