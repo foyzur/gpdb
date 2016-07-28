@@ -114,19 +114,17 @@ void SetupMemoryDataStructures(void **state)
  * This method cleans up MemoryContext tree and
  * the MemoryAccount data structures.
  */
-void TeardownMemoryDataStructures(void **state)
+void
+TeardownMemoryDataStructures(void **state)
 {
-	pfree(outputBuffer.data);
-
 	/*
-	 * TopMemoryContext deletion is not supported, so
-	 * we are just resetting it. Note: even reset
-	 * operation on TopMemoryContext is not supported,
-	 * but for our purpose (as we will not be running
-	 * anything after this call), it works to clean up
-	 * for the next unit test.
+	 * Ensure that no existing allocation refers to any short-living accounts. All
+	 * short living accounts live in MemoryAccountMemoryAccount which is soon going
+	 * to be reset via TopMemoryContext reset.
 	 */
-	MemoryContextReset(TopMemoryContext);
+	liveAccountStartId = nextAccountId;
+
+	MemoryContextReset(TopMemoryContext); /* TopMemoryContext deletion is not supported */
 
 	/* These are needed to be NULL for calling MemoryContextInit() */
 	TopMemoryContext = NULL;
@@ -138,19 +136,23 @@ void TeardownMemoryDataStructures(void **state)
 	 * execution of the next test.
 	 */
 	MemoryAccountTreeLogicalRoot = NULL;
-	TopMemoryAccount = NULL;
 	MemoryAccountMemoryAccount = NULL;
 	RolloverMemoryAccount = NULL;
 	SharedChunkHeadersMemoryAccount = NULL;
-	ActiveMemoryAccount = NULL;
 	AlienExecutorMemoryAccount = NULL;
 	MemoryAccountMemoryContext = NULL;
 
-	/*
-	 * We don't want to carry over peak to another test as this might
-	 * interfere during testing string conversion functions
-	 */
-	MemoryAccountingPeakBalance = MemoryAccountingOutstandingBalance;
+	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
+
+	for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot; longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingIdx++)
+	{
+		longLivingMemoryAccountArray[longLivingIdx] = NULL;
+	}
+
+	shortLivingMemoryAccountArray = NULL;
+
+	liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+	nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 }
 
 /*
