@@ -309,16 +309,21 @@ MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
 {
 	switch (ownerType)
 	{
+		/* Long living accounts */
 		case MEMORY_OWNER_TYPE_LogicalRoot:
 			return "Root";
-		case MEMORY_OWNER_TYPE_Rollover:
-			return "Rollover";
 		case MEMORY_OWNER_TYPE_SharedChunkHeader:
 			return "SharedHeader";
-		case MEMORY_OWNER_TYPE_Top:
-			return "Top";
+		case MEMORY_OWNER_TYPE_Rollover:
+			return "Rollover";
 		case MEMORY_OWNER_TYPE_MemAccount:
 			return "MemAcc";
+		case MEMORY_OWNER_TYPE_Exec_AlienShared:
+			return "X_Alien";
+
+		/* Short living accounts */
+		case MEMORY_OWNER_TYPE_Top:
+			return "Top";
 		case MEMORY_OWNER_TYPE_MainEntry:
 			return "Main";
 		case MEMORY_OWNER_TYPE_Parser:
@@ -414,8 +419,6 @@ MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
 			return "X_RowTrigger";
 		case MEMORY_OWNER_TYPE_Exec_AssertOp:
 			return "X_AssertOp";
-		case MEMORY_OWNER_TYPE_Exec_AlienShared:
-			return "X_Alien";
 		case MEMORY_OWNER_TYPE_Exec_BitmapTableScan:
 			return "X_BitmapTableScan";
 		case MEMORY_OWNER_TYPE_Exec_PartitionSelector:
