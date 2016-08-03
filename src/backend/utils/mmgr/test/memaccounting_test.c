@@ -810,48 +810,32 @@ test__MemoryAccounting_GetAccountName__Validate(void **state)
 
 	char* longLivingNames[] = {"Root", "SharedHeader", "Rollover", "MemAcc", "X_Alien"};
 
-	char* shortLivingOpNames[] = {"Top", "Main", "Parser", "Planner", "Optimizer", "Dispatcher", "Serializer", "Deserializer", "Executor", "X_Result", "X_Append", "X_Sequence", "X_Bitmap", "X_BitmapOr", "X_SeqScan", "X_ExternalScan", "X_AppendOnlyScan", "X_AOCSCAN", "X_TableScan", "X_DynamicTableScan", "X_IndexScan", "X_DynamicIndexScan", "X_BitmapIndexScan",
+	char* shortLivingNames[] = {"Top", "Main", "Parser", "Planner", "Optimizer", "Dispatcher", "Serializer", "Deserializer", "Executor", "X_Result", "X_Append", "X_Sequence", "X_Bitmap", "X_BitmapOr", "X_SeqScan", "X_ExternalScan", "X_AppendOnlyScan", "X_AOCSCAN", "X_TableScan", "X_DynamicTableScan", "X_IndexScan", "X_DynamicIndexScan", "X_BitmapIndexScan",
 			"X_BitmapHeapScan", "X_BitmapAppendOnlyScan", "X_TidScan", "X_SubqueryScan", "X_FunctionScan", "X_TableFunctionScan", "X_ValuesScan", "X_NestLoop", "X_MergeJoin", "X_HashJoin", "X_Material", "X_Sort", "X_Agg", "X_Unique", "X_Hash", "X_SetOp", "X_Limit",
 			"X_Motion", "X_ShareInputScan", "X_Window", "X_Repeat", "X_DML", "X_SplitUpdate", "X_RowTrigger", "X_AssertOp"};
 
 	/* Ensure we have all the long living accounts in the longLivingNames array */
 	assert_true(sizeof(longLivingNames) / sizeof(char*) == MEMORY_OWNER_TYPE_END_LONG_LIVING);
-	for (int longLivingIndex = MEMORY_OWNER_TYPE_START_LONG_LIVING; longLivingIndex < sizeof(longLivingNames) / sizeof(char*); longLivingIndex++)
+	for (int longLivingId = MEMORY_OWNER_TYPE_START_LONG_LIVING; longLivingId <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingId++)
 	{
-		int memoryOwnerType = LONG_LIVING_START + longLivingIndex;
-		MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(CreateMemoryAccountImpl(0, memoryOwnerType, ActiveMemoryAccountId));
-
-		assert_true(strcmp(MemoryAccounting_GetOwnerName(newAccount), longLivingNames[longLivingIndex]) == 0);
-
-		pfree(newAccount);
+		MemoryOwnerType memoryOwnerType = (MemoryOwnerType) longLivingId;
+		assert_true(strcmp(MemoryAccounting_GetOwnerName(memoryOwnerType), longLivingNames[longLivingId - 1]) == 0);
 	}
 
-	assert_true(sizeof(shortLivingNonOpNames) / sizeof(char*) == MEMORY_OWNER_TYPE_END_SHORT_LIVING - MEMORY_OWNER_TYPE_START_SHORT_LIVING + 1);
-	for (int shortLivingNonOpIndex = 0; shortLivingNonOpIndex < sizeof(shortLivingNonOpNames) / sizeof(char*); shortLivingNonOpIndex++)
+	assert_true(sizeof(shortLivingNames) / sizeof(char*) == MEMORY_OWNER_TYPE_END_SHORT_LIVING - MEMORY_OWNER_TYPE_START_SHORT_LIVING + 1);
+	for (int shortLivingOwnerTypeId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+			shortLivingOwnerTypeId <= MEMORY_OWNER_TYPE_END_SHORT_LIVING; shortLivingOwnerTypeId++)
 	{
-		int memoryOwnerType = SHORT_LIVING_NON_OPERATOR_START + shortLivingNonOpIndex;
-		MemoryAccount *newAccount = CreateMemoryAccountImpl(0, memoryOwnerType, ActiveMemoryAccount);
-
-		assert_true(strcmp(MemoryAccounting_GetOwnerName(newAccount), shortLivingNonOpNames[shortLivingNonOpIndex]) == 0);
-
-		pfree(newAccount);
-	}
-
-	for (int shortLivingOpIndex = 0; shortLivingOpIndex < sizeof(shortLivingOpNames) / sizeof(char*); shortLivingOpIndex++)
-	{
-		int memoryOwnerType = SHORT_LIVING_OPERATOR_START + shortLivingOpIndex;
-		MemoryAccount *newAccount = CreateMemoryAccountImpl(0, memoryOwnerType, ActiveMemoryAccount);
-
-		assert_true(strcmp(MemoryAccounting_GetOwnerName(newAccount), shortLivingOpNames[shortLivingOpIndex]) == 0);
-
-		pfree(newAccount);
+		MemoryOwnerType shortLivingOwnerType = (MemoryOwnerType) shortLivingOwnerTypeId;
+		assert_true(strcmp(MemoryAccounting_GetOwnerName(shortLivingOwnerType),
+				shortLivingNames[shortLivingOwnerTypeId - MEMORY_OWNER_TYPE_START_SHORT_LIVING]) == 0);
 	}
 }
 
 
-/* Tests if the MemoryAccounting_GetPeak is returning the correct peak balance */
+/* Tests if the MemoryAccounting_GetAccountPeakBalance is returning the correct peak balance */
 void
-test__MemoryAccounting_GetPeak__Validate(void **state)
+test__MemoryAccounting_GetAccountPeakBalance__Validate(void **state)
 {
 	uint64 peakBalances[] = {0, UINT32_MAX, UINT64_MAX};
 
@@ -859,11 +843,12 @@ test__MemoryAccounting_GetPeak__Validate(void **state)
 	{
 		uint64 peakBalance = peakBalances[accountIndex];
 
-		MemoryAccount *newAccount = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccount);
+		MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(
+				CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId));
 
 		newAccount->peak = peakBalance;
 
-		assert_true(MemoryAccounting_GetPeak(newAccount) == peakBalance);
+		assert_true(MemoryAccounting_GetAccountPeakBalance(newAccount) == peakBalance);
 
 		pfree(newAccount);
 	}
@@ -881,7 +866,8 @@ test__MemoryAccounting_GetBalance__Validate(void **state)
 		uint64 allocated = allAllocated[accountIndex];
 		uint64 freed = allFreed[accountIndex];
 
-		MemoryAccount *newAccount = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccount);
+		MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(
+				CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId));
 
 		newAccount->allocated = allocated;
 		newAccount->freed = freed;
@@ -909,7 +895,8 @@ test__MemoryAccounting_ToString__Validate(void **state)
   SharedHeader: Peak 0K bytes. Quota: 0K bytes.\n";
 
 	/* ActiveMemoryAccount should be Top at this point */
-	MemoryAccount *newAccount = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccount);
+	MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId));
+	MemoryAccount *topAccount = MemoryAccounting_ConvertIdToAccount(liveAccountStartId);
 
 	void * dummy1 = palloc(NEW_ALLOC_SIZE);
 	void * dummy2 = palloc(NEW_ALLOC_SIZE);
@@ -928,7 +915,7 @@ test__MemoryAccounting_ToString__Validate(void **state)
     MemoryAccounting_ToString(MemoryAccountTreeLogicalRoot, &buffer, 0 /* Indentation */);
 
 	char		buf[MAX_OUTPUT_BUFFER_SIZE];
-	snprintf(buf, sizeof(buf), templateString, TopMemoryAccount->peak / 1024, newAccount->peak / 1024);
+	snprintf(buf, sizeof(buf), templateString, topAccount->peak / 1024, newAccount->peak / 1024);
 
     assert_true(strcmp(buffer.data, buf) == 0);
 
@@ -959,7 +946,9 @@ memory: Rollover, 5, 0, 0, 0, 0, 0, 0\n\
 memory: SharedHeader, 6, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n";
 
 	/* ActiveMemoryAccount should be Top at this point */
-	MemoryAccount *newAccount = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccount);
+	MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(
+			CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId));
+	MemoryAccount *topAccount = MemoryAccounting_ConvertIdToAccount(liveAccountStartId);
 
 	void * dummy1 = palloc(NEW_ALLOC_SIZE);
 	void * dummy2 = palloc(NEW_ALLOC_SIZE);
@@ -977,7 +966,7 @@ memory: SharedHeader, 6, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 
 	char		buf[MAX_OUTPUT_BUFFER_SIZE];
 	snprintf(buf, sizeof(buf), templateString,
 			MemoryAccountingPeakBalance, MemoryAccountingPeakBalance, MemoryAccountingPeakBalance,
-			TopMemoryAccount->peak, TopMemoryAccount->allocated, TopMemoryAccount->freed, TopMemoryAccount->allocated - TopMemoryAccount->freed,
+			topAccount->peak, topAccount->allocated, topAccount->freed, topAccount->allocated - topAccount->freed,
 			newAccount->peak, newAccount->allocated, newAccount->freed, newAccount->allocated - newAccount->freed,
 			MemoryAccountMemoryAccount->peak, MemoryAccountMemoryAccount->allocated, MemoryAccountMemoryAccount->freed, MemoryAccountMemoryAccount->allocated - MemoryAccountMemoryAccount->freed,
 			SharedChunkHeadersMemoryAccount->peak, SharedChunkHeadersMemoryAccount->allocated, SharedChunkHeadersMemoryAccount->freed, SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed);
@@ -999,7 +988,9 @@ test__MemoryAccounting_SaveToFile__GeneratesCorrectString(void **state)
 	MemoryOwnerType newAccountOwnerType = MEMORY_OWNER_TYPE_Exec_Hash;
 
 	/* ActiveMemoryAccount should be Top at this point */
-	MemoryAccount *newAccount = CreateMemoryAccountImpl(0, newAccountOwnerType, ActiveMemoryAccount);
+	MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(
+			CreateMemoryAccountImpl(0, newAccountOwnerType, ActiveMemoryAccountId));
+	MemoryAccount *topAccount = MemoryAccounting_ConvertIdToAccount(liveAccountStartId);
 
 	void * dummy1 = palloc(NEW_ALLOC_SIZE);
 	void * dummy2 = palloc(NEW_ALLOC_SIZE);
@@ -1076,7 +1067,7 @@ test__MemoryAccounting_SaveToFile__GeneratesCorrectString(void **state)
 		}
 		else if (ownerType == MEMORY_OWNER_TYPE_Top)
 		{
-			assert_true(peak == TopMemoryAccount->peak && allocated == TopMemoryAccount->allocated && freed == TopMemoryAccount->freed);
+			assert_true(peak == topAccount->peak && allocated == topAccount->allocated && freed == topAccount->freed);
 		}
 		else if (ownerType ==newAccountOwnerType)
 		{
@@ -1141,7 +1132,7 @@ main(int argc, char* argv[])
 		unit_test_setup_teardown(test__MemoryContextReset__ResetsSharedChunkHeadersMemoryAccountBalance, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_Serialize__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_GetAccountName__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
-		unit_test_setup_teardown(test__MemoryAccounting_GetPeak__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
+		unit_test_setup_teardown(test__MemoryAccounting_GetAccountPeakBalance__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_GetBalance__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_ToString__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_SaveToLog__GeneratesCorrectString, SetupMemoryDataStructures, TeardownMemoryDataStructures),
