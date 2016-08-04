@@ -106,16 +106,6 @@ MemoryAccounting_ResetPeakBalance(void);
 static uint64
 MemoryAccounting_GetBalance(MemoryAccount* memoryAccount);
 
-/*
- * This is the root of the memory accounting tree. All other accounts go
- * under this node. We call it "logical root" as no one should ever use it
- * or be aware of it. After creation of "logical root" to hold the root of
- * the tree, we immediately create other "useful" nodes such as "Rollover"
- * and "Top" and switch to "Top". Logical root can only have two children:
- * TopMemoryAccount and RolloverMemoryAccount
- */
-MemoryAccount *MemoryAccountTreeLogicalRoot = NULL;
-
 /*****************************************************************************
  * Global memory accounting variables, some are only visible via memaccounting_private.h
  */
@@ -177,7 +167,7 @@ MemoryAccounting_Reset()
 	 * Attempt to reset only if we already have setup memory accounting
 	 * and the memory monitoring is ON
 	 */
-	if (MemoryAccountTreeLogicalRoot)
+	if (NULL != longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot])
 	{
 		/* No one should create child context under MemoryAccountMemoryContext */
 		Assert(MemoryAccountMemoryContext->firstchild == NULL);
@@ -245,6 +235,17 @@ MemoryAccounting_CreateAccount(long maxLimitInKB, MemoryOwnerType ownerType)
 MemoryAccountIdType
 MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
 {
+	/*
+	 * We cannot validate for stale account, as there is no guarantee
+	 * that we will have fresh account all the time. We will dynamically
+	 * switch to Rollover for stale accounts. But, for now, we at least
+	 * assert that the passed accountId was "ever" created. Note: this
+	 * assumes no overflow in the nextAccountId. For now, we don't have
+	 * overflow. But, in the future if we implement overflow for our
+	 * 64 bit id counter, we will need to get rid of this Assert or be
+	 * more smart about it
+	 */
+	Assert(desiredAccountId < nextAccountId);
 	MemoryAccountIdType oldAccountId = ActiveMemoryAccountId;
 
 	ActiveMemoryAccountId = desiredAccountId;
@@ -348,7 +349,7 @@ MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
 		case MEMORY_OWNER_TYPE_Exec_Sequence:
 			return "X_Sequence";
 		case MEMORY_OWNER_TYPE_Exec_BitmapAnd:
-			return "X_Bitmap";
+			return "X_BitmapAnd";
 		case MEMORY_OWNER_TYPE_Exec_BitmapOr:
 			return "X_BitmapOr";
 		case MEMORY_OWNER_TYPE_Exec_SeqScan:
@@ -758,9 +759,9 @@ CreateMemoryAccountImpl(long maxLimit, MemoryOwnerType ownerType, MemoryAccountI
 			ownerType == MEMORY_OWNER_TYPE_Exec_AlienShared ||
     		(MemoryAccountMemoryContext != NULL && MemoryAccountMemoryAccount != NULL));
 
-    if (ownerType == MEMORY_OWNER_TYPE_SharedChunkHeader || ownerType == MEMORY_OWNER_TYPE_Rollover || ownerType == MEMORY_OWNER_TYPE_MemAccount || ownerType == MEMORY_OWNER_TYPE_Top)
+    if (ownerType <= MEMORY_OWNER_TYPE_END_LONG_LIVING || ownerType == MEMORY_OWNER_TYPE_Top)
     {
-    	/* Set the "logical root" as the parent of two top account */
+    	/* Set the "logical root" as the parent of all long living accounts */
     	parentId = MEMORY_OWNER_TYPE_LogicalRoot;
     }
 
@@ -867,8 +868,7 @@ AddChild(MemoryAccountTree *treeArray, MemoryAccount *childAccount, MemoryAccoun
 static MemoryAccountTree*
 ConvertMemoryAccountArrayToTree(MemoryAccount** longLiving, MemoryAccount** shortLiving, MemoryAccountIdType shortLivingCount)
 {
-	// caller is in charge to free. 1 extra entry for "undefined" account
-	MemoryAccountTree *treeArray = MemoryContextAllocZero(MemoryAccountMemoryContext, sizeof(MemoryAccountTree) *
+	MemoryAccountTree *treeArray = palloc0(sizeof(MemoryAccountTree) *
 			(shortLivingCount + MEMORY_OWNER_TYPE_END_LONG_LIVING + 1));
 
 	/* Ignore "undefined" account in the tree */
@@ -1150,7 +1150,7 @@ InitMemoryAccounting()
 	 * are very few and their overhead is already known).
 	 */
 
-	if (MemoryAccountTreeLogicalRoot == NULL)
+	if (longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot] == NULL)
 	{
 		/*
 		 * All the long living accounts are created together, so if logical root
@@ -1168,7 +1168,6 @@ InitMemoryAccounting()
 		}
 
 		/* Now set all the global memory accounts */
-		MemoryAccountTreeLogicalRoot = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot];
 		SharedChunkHeadersMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_SharedChunkHeader];
 		RolloverMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
 		MemoryAccountMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_MemAccount];
