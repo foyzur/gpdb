@@ -124,7 +124,8 @@ TeardownMemoryDataStructures(void **state)
 	 * short living accounts live in MemoryAccountMemoryAccount which is soon going
 	 * to be reset via TopMemoryContext reset.
 	 */
-	liveAccountStartId = nextAccountId;
+	MemoryAccounting_Reset();
+	MemoryAccounting_SwitchAccount(MEMORY_OWNER_TYPE_Rollover);
 
 	MemoryContextReset(TopMemoryContext); /* TopMemoryContext deletion is not supported */
 
@@ -137,7 +138,6 @@ TeardownMemoryDataStructures(void **state)
 	 * try to setup memory account data structure again during the
 	 * execution of the next test.
 	 */
-	MemoryAccountTreeLogicalRoot = NULL;
 	MemoryAccountMemoryAccount = NULL;
 	RolloverMemoryAccount = NULL;
 	SharedChunkHeadersMemoryAccount = NULL;
@@ -234,7 +234,7 @@ test__CreateMemoryAccountImpl__TracksMemoryOverhead(void **state)
 	uint64 prevSharedAllocated = SharedChunkHeadersMemoryAccount->allocated;
 	uint64 prevSharedFreed = SharedChunkHeadersMemoryAccount->freed;
 
-	MemoryAccount *tempChildAccount = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, tempParentAccount);
+	MemoryAccountIdType tempChildAccountId = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, tempParentAccount);
 
 	/* Only MemoryAccountMemoryAccount changed, and nothing else changed */
 	assert_true((MemoryAccountMemoryAccount->allocated - prevAllocated) +
@@ -255,19 +255,21 @@ test__CreateMemoryAccountImpl__TracksMemoryOverhead(void **state)
 	assert_true(SharedChunkHeadersMemoryAccount->freed == prevSharedFreed);
 
 	/*
-	 * Now check SharedChunkHeadersMemoryAccount balance increase by advancing
-	 * account generation and invalidating the sharedHeaderList.
+	 * Now check SharedChunkHeadersMemoryAccount balance increase by ensuring we
+	 * cannot reuse an existing sharedChunkHeader.
 	 */
-	AdvanceMemoryAccountingGeneration();
-
-	tempChildAccount = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, tempParentAccount);
+	MemoryAccounting_SwitchAccount(tempChildAccountId);
+	void * dummy = palloc(1);
 
 	/*
-	 * The new account cannot share any previous header due to generation
-	 * advancement. So, we should see a balance increase in SharedChunkHeadersMemoryAccount
+	 * The new allocation cannot share any previous header as we didn't have
+	 * any Hash account. So, we should have allocated new shared header, increasing
+	 * the balance of SharedChunkHeadersMemoryAccount
 	 */
 	assert_true(SharedChunkHeadersMemoryAccount->allocated > prevSharedAllocated);
 	assert_true(SharedChunkHeadersMemoryAccount->freed == prevSharedFreed);
+
+	pfree(dummy);
 }
 
 /*
@@ -340,22 +342,43 @@ void
 test__MemoryAccountIsValid__ProperValidation(void **state)
 {
 	int shortLivingCount = shortLivingMemoryAccountArray->accountCount;
-	shortLivingMemoryAccountArray->accountCount = MEMORY_OWNER_TYPE_END_LONG_LIVING;
 	/* The initialization already should populate at least Top memory account */
-	assert_false(NULL != shortLivingMemoryAccountArray);
+	assert_true(NULL != shortLivingMemoryAccountArray);
 	assert_true(shortLivingMemoryAccountArray->accountCount > 0);
 
+	/* Create some short accounts */
+	MemoryAccountIdType extraShortAccountId1 = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_Append);
+	MemoryAccountIdType extraShortAccountId2 = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_Hash);
+	MemoryAccountIdType extraShortAccountId3 = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_SeqScan);
+
 	MemoryAccountArray* accountArray = shortLivingMemoryAccountArray;
+
+	/* Test when no short living account exists */
 	shortLivingMemoryAccountArray = NULL;
+	uint64 oldNext = nextAccountId;
+	/* Bypass the assertion that live is same as next if no short account */
+	nextAccountId = liveAccountStartId;
+
+	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING));
 	/*
 	 * If shortLivingMemoryAccountArray is NULL, any ID beyond
 	 * MEMORY_OWNER_TYPE_END_LONG_LIVING will be considered invalid
 	 */
-	assert_false(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING));
+	assert_false(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING + 1));
 
-	/* Restoring shortLivingAccountArray will also consider accountCount */
+	/* Restoring shortLivingAccountArray to check for valid accounts */
 	shortLivingMemoryAccountArray = accountArray;
-	assert_false(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount));
+	nextAccountId = oldNext;
+
+	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_Rollover));
+	/* liveAccountStartId should be the id of Top account */
+	assert_true(MemoryAccounting_IsValidAccount(liveAccountStartId));
+	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount - 1));
+
+	/* Check for a false return for boundary */
+	assert_false(MemoryAccounting_IsValidAccount(
+			MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount +
+			1 /* Reserved 1 for invalid */));
 }
 
 /*
@@ -367,7 +390,7 @@ test__MemoryAccountIsValid__ProperValidation(void **state)
 void
 test__MemoryAccounting_Reset__ReusesLongLivingAccounts(void **state)
 {
-	MemoryAccount *oldLogicalRoot = MemoryAccountTreeLogicalRoot;
+	MemoryAccount *oldLogicalRoot = MemoryAccounting_ConvertIdToAccount(MEMORY_OWNER_TYPE_LogicalRoot);
 	MemoryAccount *oldSharedChunkHeadersMemoryAccount = SharedChunkHeadersMemoryAccount;
 	MemoryAccount *oldRollover = RolloverMemoryAccount;
 	MemoryAccount *oldMemoryAccount = MemoryAccountMemoryAccount;
@@ -388,13 +411,15 @@ test__MemoryAccounting_Reset__ReusesLongLivingAccounts(void **state)
 	MemoryAccounting_Reset();
 
 	/* Make sure we have a valid set of accounts */
-	assert_true(MemoryAccounting_IsValidAccount(MemoryAccountTreeLogicalRoot));
-	assert_true(MemoryAccounting_IsValidAccount(SharedChunkHeadersMemoryAccount));
-	assert_true(MemoryAccounting_IsValidAccount(RolloverMemoryAccount));
-	assert_true(MemoryAccounting_IsValidAccount(MemoryAccountMemoryAccount));
+	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_LogicalRoot));
+	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_SharedChunkHeader));
+	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_Rollover));
+	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_MemAccount));
 
+	MemoryAccount *root = MemoryAccounting_ConvertIdToAccount(MEMORY_OWNER_TYPE_LogicalRoot);
 	/* MemoryAccountTreeLogicalRoot should be reused (i.e., MemoryAccountTreeLogicalRoot will survive the reset) */
-	assert_true(oldLogicalRoot && MemoryAccountTreeLogicalRoot && MemoryAccountTreeLogicalRoot->maxLimit == ULONG_LONG_MAX);
+	assert_true(oldLogicalRoot && root &&
+			root->maxLimit == ULONG_LONG_MAX);
 
 	/* SharedChunkHeadersMemoryAccount should be reused (i.e., SharedChunkHeadersMemoryAccount will survive the reset) */
 	assert_true(oldSharedChunkHeadersMemoryAccount && SharedChunkHeadersMemoryAccount &&
@@ -508,14 +533,14 @@ test__MemoryAccounting_Reset__ResetsMemoryAccountMemoryContext(void **state)
 void
 test__MemoryAccounting_Reset__TopIsActive(void **state)
 {
-	MemoryAccount *newActiveAccount = MemoryAccounting_ConvertIdToAccount(CreateMemoryAccountImpl
-			(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId));
+	MemoryAccountIdType newActiveAccountId = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId);
 
-	MemoryAccount *oldActiveAccount = MemoryAccounting_SwitchAccount(newActiveAccount);
-	assert_true(ActiveMemoryAccountId != MEMORY_OWNER_TYPE_Top);
+	MemoryAccountIdType oldActiveAccountId = MemoryAccounting_SwitchAccount(newActiveAccountId);
+	assert_true(ActiveMemoryAccountId == newActiveAccountId);
 
 	MemoryAccounting_Reset();
-	assert_true(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Top);
+	MemoryAccount* top = MemoryAccounting_ConvertIdToAccount(liveAccountStartId);
+	assert_true(MEMORY_OWNER_TYPE_Top == top->ownerType && ActiveMemoryAccountId == top->id);
 }
 
 /*
@@ -531,11 +556,12 @@ test__MemoryAccounting_Reset__AdvancesGeneration(void **state)
 	MemoryAccounting_IsValidAccount(extraShortAccountId);
 
 	MemoryAccountIdType nextId = nextAccountId;
-	assert_true(liveStart != nextId);
+	assert_true(liveStart + 1 < nextId);
 
 	MemoryAccounting_Reset();
 
-	assert_true(liveStart == nextId);
+	/* We already created top */
+	assert_true(liveAccountStartId == nextId && liveAccountStartId + 1 == nextAccountId);
 	/* Previous short account is no longer valid */
 	assert_false(MemoryAccounting_IsValidAccount(extraShortAccountId));
 }
@@ -656,14 +682,14 @@ test__MemoryContextReset__ResetsSharedChunkHeadersMemoryAccountBalance(void **st
 	 * the MemoryAccountMemoryContext reset. So, we have to carefully set
 	 * to a long-living active memory account to prevent a crash in the teardown
 	 */
-	MemoryAccount *oldAccount = MemoryAccounting_SwitchAccount(MemoryAccountMemoryAccount);
+	MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount(MEMORY_OWNER_TYPE_Exec_AlienShared);
 	MemoryContext newContext = AllocSetContextCreate(TopMemoryContext,
 										   "TestContext",
 										   ALLOCSET_DEFAULT_MINSIZE,
 										   ALLOCSET_DEFAULT_INITSIZE,
 										   ALLOCSET_DEFAULT_MAXSIZE);
 
-	MemoryAccounting_SwitchAccount(oldAccount);
+	MemoryAccounting_SwitchAccount(oldAccountId);
 
 	MemoryContext oldContext = MemoryContextSwitchTo(newContext);
 
@@ -688,7 +714,7 @@ test__MemoryContextReset__ResetsSharedChunkHeadersMemoryAccountBalance(void **st
 
 	int64 prevSharedHeaderBalance = SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed;
 
-	/* This would *not* trigger a new shared header (reuse header) */
+	/* This would *not* trigger a new shared	 header (reuse header) */
 	void *testAlloc2 = palloc(sizeof(int));
 
 	/* Make sure no shared header balance is increased */
@@ -696,9 +722,9 @@ test__MemoryContextReset__ResetsSharedChunkHeadersMemoryAccountBalance(void **st
 			(SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed));
 
 	/* We need a new active account to make sure that we are forcing a new SharedChunkHeader */
-	MemoryAccount *newAccount = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_Hash);
+	MemoryAccountIdType newAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_Hash);
 
-	oldAccount = MemoryAccounting_SwitchAccount(newAccount);
+	oldAccountId = MemoryAccounting_SwitchAccount(newAccountId);
 
 	/* Tiny alloc that requires a new SharedChunkHeader, due to a new ActiveMemoryAccount */
 	void *testAlloc3 = palloc(sizeof(int));
@@ -810,9 +836,13 @@ test__MemoryAccounting_GetAccountName__Validate(void **state)
 
 	char* longLivingNames[] = {"Root", "SharedHeader", "Rollover", "MemAcc", "X_Alien"};
 
-	char* shortLivingNames[] = {"Top", "Main", "Parser", "Planner", "Optimizer", "Dispatcher", "Serializer", "Deserializer", "Executor", "X_Result", "X_Append", "X_Sequence", "X_Bitmap", "X_BitmapOr", "X_SeqScan", "X_ExternalScan", "X_AppendOnlyScan", "X_AOCSCAN", "X_TableScan", "X_DynamicTableScan", "X_IndexScan", "X_DynamicIndexScan", "X_BitmapIndexScan",
-			"X_BitmapHeapScan", "X_BitmapAppendOnlyScan", "X_TidScan", "X_SubqueryScan", "X_FunctionScan", "X_TableFunctionScan", "X_ValuesScan", "X_NestLoop", "X_MergeJoin", "X_HashJoin", "X_Material", "X_Sort", "X_Agg", "X_Unique", "X_Hash", "X_SetOp", "X_Limit",
-			"X_Motion", "X_ShareInputScan", "X_Window", "X_Repeat", "X_DML", "X_SplitUpdate", "X_RowTrigger", "X_AssertOp"};
+	char* shortLivingNames[] = {"Top", "Main", "Parser", "Planner", "Optimizer", "Dispatcher", "Serializer", "Deserializer",
+			"Executor", "X_Result", "X_Append", "X_Sequence", "X_BitmapAnd", "X_BitmapOr", "X_SeqScan", "X_ExternalScan",
+			"X_AppendOnlyScan", "X_AOCSCAN", "X_TableScan", "X_DynamicTableScan", "X_IndexScan", "X_DynamicIndexScan", "X_BitmapIndexScan",
+			"X_BitmapHeapScan", "X_BitmapAppendOnlyScan", "X_TidScan", "X_SubqueryScan", "X_FunctionScan", "X_TableFunctionScan",
+			"X_ValuesScan", "X_NestLoop", "X_MergeJoin", "X_HashJoin", "X_Material", "X_Sort", "X_Agg", "X_Unique", "X_Hash", "X_SetOp",
+			"X_Limit", "X_Motion", "X_ShareInputScan", "X_Window", "X_Repeat", "X_DML", "X_SplitUpdate", "X_RowTrigger", "X_AssertOp",
+			"X_BitmapTableScan", "X_PartitionSelector"};
 
 	/* Ensure we have all the long living accounts in the longLivingNames array */
 	assert_true(sizeof(longLivingNames) / sizeof(char*) == MEMORY_OWNER_TYPE_END_LONG_LIVING);
@@ -827,8 +857,9 @@ test__MemoryAccounting_GetAccountName__Validate(void **state)
 			shortLivingOwnerTypeId <= MEMORY_OWNER_TYPE_END_SHORT_LIVING; shortLivingOwnerTypeId++)
 	{
 		MemoryOwnerType shortLivingOwnerType = (MemoryOwnerType) shortLivingOwnerTypeId;
-		assert_true(strcmp(MemoryAccounting_GetOwnerName(shortLivingOwnerType),
-				shortLivingNames[shortLivingOwnerTypeId - MEMORY_OWNER_TYPE_START_SHORT_LIVING]) == 0);
+		char* name = MemoryAccounting_GetOwnerName(shortLivingOwnerType);
+		char* expected = shortLivingNames[shortLivingOwnerTypeId - MEMORY_OWNER_TYPE_START_SHORT_LIVING];
+		assert_true(strcmp(name, expected) == 0);
 	}
 }
 
@@ -848,7 +879,7 @@ test__MemoryAccounting_GetAccountPeakBalance__Validate(void **state)
 
 		newAccount->peak = peakBalance;
 
-		assert_true(MemoryAccounting_GetAccountPeakBalance(newAccount) == peakBalance);
+		assert_true(MemoryAccounting_GetAccountPeakBalance(newAccount->id) == peakBalance);
 
 		pfree(newAccount);
 	}
@@ -886,13 +917,13 @@ void
 test__MemoryAccounting_ToString__Validate(void **state)
 {
 	char *templateString =
-"Root: Peak 0K bytes. Quota: 0K bytes.\n\
-  Top: Peak %" PRIu64 "K bytes. Quota: 0K bytes.\n\
-    X_Hash: Peak %" PRIu64 "K bytes. Quota: 0K bytes.\n\
-    X_Alien: Peak 0K bytes. Quota: 0K bytes.\n\
-  MemAcc: Peak 0K bytes. Quota: 0K bytes.\n\
-  Rollover: Peak 0K bytes. Quota: 0K bytes.\n\
-  SharedHeader: Peak 0K bytes. Quota: 0K bytes.\n";
+"Root: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  Top: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: 0bytes.\n\
+    X_Hash: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: 0bytes.\n\
+  X_Alien: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  MemAcc: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: 0bytes.\n\
+  Rollover: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  SharedHeader: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: 0bytes.\n";
 
 	/* ActiveMemoryAccount should be Top at this point */
 	MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId));
@@ -901,7 +932,7 @@ test__MemoryAccounting_ToString__Validate(void **state)
 	void * dummy1 = palloc(NEW_ALLOC_SIZE);
 	void * dummy2 = palloc(NEW_ALLOC_SIZE);
 
-	MemoryAccounting_SwitchAccount(newAccount);
+	MemoryAccounting_SwitchAccount(newAccount->id);
 
 	void * dummy3 = palloc(NEW_ALLOC_SIZE);
 
@@ -912,13 +943,21 @@ test__MemoryAccounting_ToString__Validate(void **state)
 	StringInfoData buffer;
 	initStringInfoOfSize(&buffer, MAX_OUTPUT_BUFFER_SIZE);
 
-    MemoryAccounting_ToString(MemoryAccountTreeLogicalRoot, &buffer, 0 /* Indentation */);
+	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Undefined],
+			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
+
+	MemoryAccounting_ToString(&tree[MEMORY_OWNER_TYPE_LogicalRoot], &buffer, 0 /* Indentation */);
 
 	char		buf[MAX_OUTPUT_BUFFER_SIZE];
-	snprintf(buf, sizeof(buf), templateString, topAccount->peak / 1024, newAccount->peak / 1024);
+	snprintf(buf, sizeof(buf), templateString,
+			topAccount->peak, (topAccount->allocated - topAccount->freed), /* Top */
+			newAccount->peak, (newAccount->allocated - newAccount->freed), /* X_Hash */
+			MemoryAccountMemoryAccount->peak, (MemoryAccountMemoryAccount->allocated - MemoryAccountMemoryAccount->freed), /* MemoryAccountMemoryAccount */
+			SharedChunkHeadersMemoryAccount->peak, (SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed) /* SharedChunkHeadersMemoryAccount */);
 
     assert_true(strcmp(buffer.data, buf) == 0);
 
+    pfree(tree);
     pfree(buffer.data);
     pfree(newAccount);
 }
@@ -940,7 +979,7 @@ memory: Peak, 0, 0, 0, %" PRIu64 ", %" PRIu64 ", 0, %" PRIu64 "\n\
 memory: Root, 0, 0, 0, 0, 0, 0, 0\n\
 memory: Top, 1, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n\
 memory: X_Hash, 2, 1, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n\
-memory: X_Alien, 3, 1, 0, 0, 0, 0, 0\n\
+memory: X_Alien, 3, 0, 0, 0, 0, 0, 0\n\
 memory: MemAcc, 4, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n\
 memory: Rollover, 5, 0, 0, 0, 0, 0, 0\n\
 memory: SharedHeader, 6, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n";
@@ -951,19 +990,23 @@ memory: SharedHeader, 6, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 
 	MemoryAccount *topAccount = MemoryAccounting_ConvertIdToAccount(liveAccountStartId);
 
 	void * dummy1 = palloc(NEW_ALLOC_SIZE);
+
+	MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount(newAccount->id);
+
 	void * dummy2 = palloc(NEW_ALLOC_SIZE);
-
-	MemoryAccounting_SwitchAccount(newAccount);
-
 	void * dummy3 = palloc(NEW_ALLOC_SIZE);
+	MemoryAccounting_SwitchAccount(oldAccountId);
 
-	pfree(dummy1);
-	pfree(dummy2);
+	/* Now free in Hash account, although Hash is no longer Active */
 	pfree(dummy3);
 
     MemoryAccounting_SaveToLog();
 
 	char		buf[MAX_OUTPUT_BUFFER_SIZE];
+	/* Hack to discount "tree" free in MemoryAccounting_SaveToLog which we did not count when walked the tree */
+	uint64 hackedFreed = topAccount->freed;
+	topAccount->freed = 0;
+
 	snprintf(buf, sizeof(buf), templateString,
 			MemoryAccountingPeakBalance, MemoryAccountingPeakBalance, MemoryAccountingPeakBalance,
 			topAccount->peak, topAccount->allocated, topAccount->freed, topAccount->allocated - topAccount->freed,
@@ -971,8 +1014,13 @@ memory: SharedHeader, 6, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 
 			MemoryAccountMemoryAccount->peak, MemoryAccountMemoryAccount->allocated, MemoryAccountMemoryAccount->freed, MemoryAccountMemoryAccount->allocated - MemoryAccountMemoryAccount->freed,
 			SharedChunkHeadersMemoryAccount->peak, SharedChunkHeadersMemoryAccount->allocated, SharedChunkHeadersMemoryAccount->freed, SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed);
 
+	/* Restore hacked counters */
+	topAccount->freed = hackedFreed;
+
     assert_true(strcmp(outputBuffer.data, buf) == 0);
 
+	pfree(dummy1);
+	pfree(dummy2);
     pfree(newAccount);
 }
 
@@ -995,7 +1043,7 @@ test__MemoryAccounting_SaveToFile__GeneratesCorrectString(void **state)
 	void * dummy1 = palloc(NEW_ALLOC_SIZE);
 	void * dummy2 = palloc(NEW_ALLOC_SIZE);
 
-	MemoryAccounting_SwitchAccount(newAccount);
+	MemoryAccounting_SwitchAccount(newAccount->id);
 
 	void * dummy3 = palloc(NEW_ALLOC_SIZE);
 
@@ -1017,7 +1065,10 @@ test__MemoryAccounting_SaveToFile__GeneratesCorrectString(void **state)
 	char *token = strtok(outputBuffer.data, "\n");
 	int lineNo = 0;
 
-	int memoryOwnerTypes[] = {-1, -2, 10, 101, 1029, 1040, 13, 12, 11};
+	int memoryOwnerTypes[] = {MEMORY_STAT_TYPE_VMEM_RESERVED, MEMORY_STAT_TYPE_MEMORY_ACCOUNTING_PEAK,
+			MEMORY_OWNER_TYPE_LogicalRoot, MEMORY_OWNER_TYPE_Top, MEMORY_OWNER_TYPE_Exec_Hash ,
+			MEMORY_OWNER_TYPE_Exec_AlienShared, MEMORY_OWNER_TYPE_MemAccount, MEMORY_OWNER_TYPE_Rollover,
+			MEMORY_OWNER_TYPE_SharedChunkHeader};
 
 	char runId[80];
 	char datasetId[80];
@@ -1062,8 +1113,9 @@ test__MemoryAccounting_SaveToFile__GeneratesCorrectString(void **state)
 		}
 		else if (ownerType == MEMORY_OWNER_TYPE_LogicalRoot)
 		{
-			assert_true(peak == MemoryAccountTreeLogicalRoot->peak &&
-					allocated == MemoryAccountTreeLogicalRoot->allocated && freed == MemoryAccountTreeLogicalRoot->freed);
+			MemoryAccount *root = MemoryAccounting_ConvertIdToAccount(MEMORY_OWNER_TYPE_LogicalRoot);
+			assert_true(peak == root->peak &&
+					allocated == root->allocated && freed == root->freed);
 		}
 		else if (ownerType == MEMORY_OWNER_TYPE_Top)
 		{

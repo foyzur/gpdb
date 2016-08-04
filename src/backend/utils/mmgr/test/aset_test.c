@@ -7,7 +7,6 @@
 
 #define NEW_ALLOC_SIZE 1024
 
-extern MemoryAccount* MemoryAccountTreeLogicalRoot;
 extern MemoryAccount* MemoryAccountMemoryAccount;
 extern MemoryAccount* RolloverMemoryAccount;
 extern MemoryAccount* AlienExecutorMemoryAccount;
@@ -51,6 +50,12 @@ TeardownMemoryDataStructures(void **state)
 	 */
 	liveAccountStartId = nextAccountId;
 
+	/*
+	 * This ensures that none of the allocations in the TopMemoryContext depends on
+	 * a short-living account created in MemoryAccountMemoryContext that will no longer
+	 * be available
+	 */
+	MemoryAccounting_Reset();
 	MemoryContextReset(TopMemoryContext); /* TopMemoryContext deletion is not supported */
 
 	/* These are needed to be NULL for calling MemoryContextInit() */
@@ -62,7 +67,6 @@ TeardownMemoryDataStructures(void **state)
 	 * try to setup memory account data structure again during the
 	 * execution of the next test.
 	 */
-	MemoryAccountTreeLogicalRoot = NULL;
 	MemoryAccountMemoryAccount = NULL;
 	RolloverMemoryAccount = NULL;
 	SharedChunkHeadersMemoryAccount = NULL;
