@@ -48,14 +48,9 @@ TeardownMemoryDataStructures(void **state)
 	 * short living accounts live in MemoryAccountMemoryAccount which is soon going
 	 * to be reset via TopMemoryContext reset.
 	 */
-	liveAccountStartId = nextAccountId;
-
-	/*
-	 * This ensures that none of the allocations in the TopMemoryContext depends on
-	 * a short-living account created in MemoryAccountMemoryContext that will no longer
-	 * be available
-	 */
 	MemoryAccounting_Reset();
+	MemoryAccounting_SwitchAccount(MEMORY_OWNER_TYPE_Rollover);
+
 	MemoryContextReset(TopMemoryContext); /* TopMemoryContext deletion is not supported */
 
 	/* These are needed to be NULL for calling MemoryContextInit() */
@@ -85,6 +80,7 @@ TeardownMemoryDataStructures(void **state)
 	liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 	nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 }
+
 
 /*
  * Any change of global outstanding allocation balance should come
@@ -308,8 +304,9 @@ test__AllocAllocInfo__UsesNullAccountHeader(void **state)
 
 	/* Turning off memory monitoring */
 	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Undefined;
+
 	/* Also make SharedChunkHeadersMemoryAccount undefined to avoid assert failure */
-	SharedChunkHeadersMemoryAccount = MEMORY_OWNER_TYPE_Undefined;
+	SharedChunkHeadersMemoryAccount = NULL;
 
 	/* Allocate from the new context which should trigger a nullAccountHeader creation*/
 	void *testAlloc = MemoryContextAlloc(newContext, NEW_ALLOC_SIZE);
@@ -323,6 +320,8 @@ test__AllocAllocInfo__UsesNullAccountHeader(void **state)
 	pfree(testAlloc);
 
 	MemoryContextDelete(newContext);
+
+	SharedChunkHeadersMemoryAccount = MemoryAccounting_ConvertIdToAccount(MEMORY_OWNER_TYPE_SharedChunkHeader);
 }
 
 /*
