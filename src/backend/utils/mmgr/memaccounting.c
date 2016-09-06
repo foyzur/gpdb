@@ -468,7 +468,7 @@ MemoryAccounting_Serialize(StringInfoData *buffer)
  * str: The output buffer
  * indentation: The indentation of the root
  */
-void
+static void
 MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation)
 {
 	MemoryAccountSerializerCxt cxt;
@@ -505,7 +505,7 @@ MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefi
 	 * Add vmem reserved as reported by memprot. We report the vmem reserved in the
 	 * "allocated" and "peak" fields. We set the freed to 0.
 	 */
-	appendStringInfo(str, "%s,%d,%u,%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
 			prefix, MEMORY_STAT_TYPE_VMEM_RESERVED,
 			totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, vmem_reserved /* Peak */, vmem_reserved /* Allocated */, (int64) 0 /* Freed */);
@@ -513,7 +513,7 @@ MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefi
 	/*
 	 * Add peak memory observed from inside memory accounting among all allocations.
 	 */
-	appendStringInfo(str, "%s,%d,%u,%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
 			prefix, MEMORY_STAT_TYPE_MEMORY_ACCOUNTING_PEAK,
 			totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */,
@@ -584,7 +584,7 @@ MemoryAccounting_SaveToFile(int currentSliceId)
 	initStringInfo(&memBuf);
 
 	/* run_id, dataset_id, query_id, scale_factor, gp_session_id, current_statement_timestamp, slice_id, segment_idx, */
-	appendStringInfo(&prefix, "%s,%s,%s,%u,%u,%d,%" PRIu64 ",%d,%d",
+	appendStringInfo(&prefix, "%s,%s,%s,%u,%u,%d," UINT64_FORMAT ",%d,%d",
 		memory_profiler_run_id, memory_profiler_dataset_id, memory_profiler_query_id,
 		memory_profiler_dataset_size, statement_mem, gp_session_id, GetCurrentStatementStartTimestamp(),
 		currentSliceId, GpIdentity.segindex);
@@ -620,11 +620,11 @@ MemoryAccounting_SaveToLog()
 	/* Write the header for the subsequent lines of memory usage information */
     write_stderr("memory: account_name, child_id, parent_id, quota, peak, allocated, freed, current\n");
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", "Vmem",
+    write_stderr("memory: %s, %u, %u, " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT "\n", "Vmem",
     		totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, vmem_reserved /* Peak */, vmem_reserved /* Allocated */, (int64) 0 /* Freed */, vmem_reserved /* Current */);
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", "Peak",
+    write_stderr("memory: %s, %u, %u, " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT "\n", "Peak",
     		totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */, MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */, MemoryAccountingPeakBalance /* Current */);
 
@@ -1019,7 +1019,7 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
 
     Assert(memoryAccount->peak >= MemoryAccounting_GetBalance(memoryAccount));
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
-    appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
+    appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: " UINT64_FORMAT "bytes.\n",
     	MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
 		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
 
@@ -1052,7 +1052,7 @@ MemoryAccountToCSV(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 	/*
 	 * PREFIX, ownerType, curWalkSerial, parentWalkSerial, maxLimit, peak, allocated, freed
 	 */
-	appendStringInfo(memAccountCxt->buffer, "%s,%u,%u,%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+	appendStringInfo(memAccountCxt->buffer, "%s,%u,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
 			memAccountCxt->prefix, memoryAccount->ownerType,
 			curWalkSerial, parentWalkSerial,
 			memoryAccount->maxLimit,
@@ -1087,7 +1087,7 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 
 	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
+    write_stderr("memory: %s, %u, %u, " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT "\n", MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
     		curWalkSerial /* Child walk serial */, parentWalkSerial /* Parent walk serial */,
 			(int64) memoryAccount->maxLimit /* Quota */,
 			memoryAccount->peak /* Peak */,

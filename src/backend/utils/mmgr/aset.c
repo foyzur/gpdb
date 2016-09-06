@@ -292,7 +292,7 @@ static void dump_mc_for(FILE *file, MemoryContext mc)
 		return;
 
 	AllocSet set = (AllocSet) mc;
-	fprintf(file, "%p|%p|%d|%s|%"PRIu64"|%"PRIu64"|%ld|%ld|%ld|%ld|%d", mc, mc->parent, mc->type, mc->name,
+	fprintf(file, "%p|%p|%d|%s|"UINT64_FORMAT"|"UINT64_FORMAT"|%zu|%zu|%zu|%zu|%d", mc, mc->parent, mc->type, mc->name,
 			mc->allBytesAlloc, mc->allBytesFreed, mc->maxBytesHeld,
 			set->initBlockSize, set->maxBlockSize, set->nextBlockSize, set->isReset);
 
