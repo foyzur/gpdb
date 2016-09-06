@@ -71,7 +71,7 @@ typedef struct CdbExplain_StatHdr
     int         enotes;         /* offset to end of extra text area */
 
     int			memAccountCount;     /* How many mem account we serialized */
-    int			memAccountTreeStartOffset; /* Where in the header our mem account tree is serialized */
+    int			memAccountStartOffset; /* Where in the header our memory account array is serialized */
 
     CdbExplain_SliceWorker  worker;     /* qExec's overall stats for slice */
 
@@ -131,8 +131,12 @@ typedef struct CdbExplain_SliceSummary
     int             segindex0;      /* segment id of workers[0] */
     CdbExplain_SliceWorker *workers;    /* -> array [0..nworker-1] of SliceWorker */
 
-    void **memoryAccounts; /* Array of pointers to memory accounts array, one array per worker [0...nworker-1] */
-    MemoryAccountIdType *memoryAccountCount; /* Memory account count for each slice */
+    /*
+     * We use void ** as we don't have access to MemoryAccount struct, which is private to
+     * memory accounting framework
+     */
+    void **memoryAccounts; /* Array of pointers to serialized memory accounts array, one array per worker [0...nworker-1]. */
+    MemoryAccountIdType *memoryAccountCount; /* Array of memory account counts, one per slice */
 
     CdbExplain_Agg  peakmemused; /* Summary of SliceWorker stats over all of the slice's workers */
 
@@ -394,7 +398,7 @@ cdbexplain_sendExecStats(QueryDesc *queryDesc)
     cdbexplain_collectSliceStats(planstate, &ctx.hdr.worker);
 
     /* Append MemoryAccount Tree */
-    ctx.hdr.memAccountTreeStartOffset = ctx.buf.len - hoff;
+    ctx.hdr.memAccountStartOffset = ctx.buf.len - hoff;
     initStringInfo(&memoryAccountTreeBuffer);
     uint totalSerialized = MemoryAccounting_Serialize(&memoryAccountTreeBuffer);
 
@@ -729,7 +733,7 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     *ssw = hdr->worker;
 
     const char *originalSerializedMemoryAccountingStartAddress = ((const char*) hdr) +
-    		hdr->memAccountTreeStartOffset;
+    		hdr->memAccountStartOffset;
 
     size_t bitCount = MemoryAccounting_SizeOfAccountInBytes() * hdr->memAccountCount;
     /*
@@ -1066,8 +1070,8 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
          */
         if (peakmemused.agg.vmax > 1.05 * cdbexplain_agg_avg(&peakmemused.agg))
             cdbexplain_depStatAcc_saveText(&peakmemused, ctx->extratextbuf, &saved);
-
-		/*
+		
+        /*
          * One worker which produced the greatest number of output rows.
          * (Always give at least one node a chance to have its extra message
          * text seen.  In case no node stood out above the others, make a

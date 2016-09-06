@@ -257,6 +257,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	Assert(queryDesc->estate == NULL);
 	Assert(queryDesc->plannedstmt != NULL);
 
+	Assert(queryDesc->memoryAccountId == MEMORY_OWNER_TYPE_Undefined);
 	queryDesc->memoryAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_EXECUTOR);
 
 	START_MEMORY_ACCOUNT(queryDesc->memoryAccountId);

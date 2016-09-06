@@ -76,9 +76,7 @@ extern StringInfo makeStringInfo(void);
  * Initialize a StringInfoData struct (with previously undefined contents)
  * to describe an empty string.
  */
-//extern void initStringInfo(StringInfo str);
-extern void initStringInfoImpl(StringInfo str, const char* sfile, const char *sfunc, int sline);
-#define initStringInfo(str) initStringInfoImpl(str, __FILE__, PG_FUNCNAME_MACRO, __LINE__)
+extern void initStringInfo(StringInfo str);
 
 extern void initStringInfoOfSize(StringInfo str, int bufsize);
 

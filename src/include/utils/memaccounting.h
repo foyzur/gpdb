@@ -160,7 +160,8 @@ extern MemoryAccountIdType ActiveMemoryAccountId;
 #define START_MEMORY_ACCOUNT(newMemoryAccountId)  \
 	do { \
 		MemoryAccountIdType oldActiveMemoryAccountId = ActiveMemoryAccountId; \
-		ActiveMemoryAccountId = newMemoryAccountId; \
+		ActiveMemoryAccountId = newMemoryAccountId;
+
 /*
  * END_MEMORY_ACCOUNT would restore the previous memory account that was
  * active at the time of START_MEMORY_ACCCOUNT call
