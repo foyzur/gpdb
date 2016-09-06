@@ -228,8 +228,6 @@ bool		gp_enable_exchange_default_partition = false;
 bool		log_dispatch_stats = false;
 
 int			explain_memory_verbosity = 0;
-int			leak_detection_level = 0;
-int			leak_detection_ignore = 0;
 char	   *memory_profiler_run_id = "none";
 char	   *memory_profiler_dataset_id = "none";
 char	   *memory_profiler_query_id = "none";
@@ -4667,26 +4665,6 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&optimizer_mdcache_size,
 		0, 0, INT_MAX, NULL, NULL
-	},
-
-	{
-		{"leak_detection_level", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Consider allocations leaked only if they live longer than leak_detection_level generation."),
-			NULL,
-			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&leak_detection_level,
-		0, 0, INT_MAX, NULL, NULL
-	},
-
-	{
-		{"leak_detection_ignore", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Ignores allocations of first leak_detection_ignore generations."),
-			NULL,
-			GUC_GPDB_ADDOPT | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&leak_detection_ignore,
-		5, 0, INT_MAX, NULL, NULL
 	},
 
 	{
