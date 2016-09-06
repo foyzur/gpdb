@@ -71,8 +71,6 @@
 #include "utils/gp_alloc.h"
 
 #include "miscadmin.h"
-#include "utils/dynahash.h"
-#include "utils/hsearch.h"
 
 #include "utils/memaccounting_private.h"
 
@@ -292,7 +290,7 @@ static void dump_mc_for(FILE *file, MemoryContext mc)
 		return;
 
 	AllocSet set = (AllocSet) mc;
-	fprintf(file, "%p|%p|%d|%s|%"PRIu64"|%"PRIu64"|%ld|%ld|%ld|%ld|%d", mc, mc->parent, mc->type, mc->name,
+	fprintf(file, "%p|%p|%d|%s|"UINT64_FORMAT"|"UINT64_FORMAT"|%zu|%zu|%zu|%zu|%d", mc, mc->parent, mc->type, mc->name,
 			mc->allBytesAlloc, mc->allBytesFreed, mc->maxBytesHeld,
 			set->initBlockSize, set->maxBlockSize, set->nextBlockSize, set->isReset);
 
@@ -326,6 +324,8 @@ void dump_tmc(const char *fname)
  * Debug macros
  * ----------
  */
+#ifdef CDB_PALLOC_TAGS
+
 void dump_memory_allocation(const char* fname)
 {
 	FILE *ofile = fopen(fname, "w+");
@@ -356,6 +356,7 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 		next = (AllocSet) next->header.nextchild;
 	}
 }
+#endif
 
 inline void
 AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader) __attribute__((always_inline));
@@ -390,8 +391,8 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 
 		/*
 		 * Some chunks don't use memory accounting. E.g., any chunks allocated before
-		 * memory accounting is setup will get NULL memoryAccount.
-		 * Chunks without memory account do not need any accounting adjustment.
+		 * memory accounting is setup will get undefined owner. Chunks without memory
+		 * account do not need any accounting adjustment.
 		 */
 		if (chunk->sharedHeader->memoryAccountId != MEMORY_OWNER_TYPE_Undefined)
 		{

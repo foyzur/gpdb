@@ -25,23 +25,46 @@
 #define MEMORY_REPORT_FILE_NAME_LENGTH 255
 #define SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN 64
 
-/* Saves serializer context info during walking the memory account tree */
+/* Saves serializer context info during walking the memory account array */
 typedef struct MemoryAccountSerializerCxt
 {
 	/* How many was serialized in the buffer */
 	int memoryAccountCount;
 	/* Where to serialize */
 	StringInfoData *buffer;
-	char *prefix; /* Prefix to add before each line */
+	/* Prefix to add before each line */
+	char *prefix;
 } MemoryAccountSerializerCxt;
 
+/*
+ * A tree representation of the memory account array.
+ *
+ * Our existing "rendering" algorithms expect a tree. So, a quick way of
+ * reusing these functions is to convert the array to a tree.
+ */
 typedef struct MemoryAccountTree {
 	MemoryAccount *account;
 	struct MemoryAccountTree *firstChild;
 	struct MemoryAccountTree *nextSibling;
 } MemoryAccountTree;
 
+/*
+ * Account Ids monotonically increases as new accounts are created. Many of these
+ * accounts may no longer exist as we drop accounts at the end of each statement.
+ * Therefore, we save a marker Id to indicate the start Id of "live" accounts. These
+ * live accounts are directly related to the currently executing statement.
+ *
+ * Note: only short-living accounts are tested with "liveness". Long living accounts
+ * have fixed Ids that run between MEMORY_OWNER_TYPE_START_LONG_LIVING and
+ * MEMORY_OWNER_TYPE_END_LONG_LIVING and these Ids are smaller than liveAccountStartId
+ * but are still considered live for the duration of a QE, across multiple statements
+ * and transactions.
+ */
 MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+/*
+ * A monotonically increasing counter to get the next Id at the time of creation of
+ * a new short-living account.
+ */
 MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 
 /*
@@ -67,6 +90,9 @@ static void
 AdvanceMemoryAccountingGeneration(void);
 
 static void
+MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation);
+
+static void
 InitMemoryAccounting(void);
 
 static MemoryAccountTree*
@@ -89,6 +115,9 @@ MemoryAccountToString(MemoryAccountTree *memoryAccount, void *context,
 static CdbVisitOpt
 MemoryAccountToCSV(MemoryAccountTree *memoryAccount, void *context,
 		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
+
+static void
+PsuedoAccountsToCSV(StringInfoData *str, char *prefix);
 
 static CdbVisitOpt
 MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context,
@@ -120,6 +149,14 @@ MemoryAccount *MemoryAccountMemoryAccount = NULL;
 
 // Array of accounts available
 MemoryAccountArray* shortLivingMemoryAccountArray = NULL;
+/*
+ * Long living accounts live during the entire lifespan of a QE across all the statements
+ * and have fixed Ids that run between MEMORY_OWNER_TYPE_START_LONG_LIVING
+ * and MEMORY_OWNER_TYPE_END_LONG_LIVING. They are also singleton per-owner. So,
+ * only one account exist per-owner type.
+ *
+ * Note: index 0 is saved for MEMORY_OWNER_TYPE_Undefined
+*/
 MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING + 1] = {NULL};
 
 /*
@@ -167,7 +204,7 @@ MemoryAccounting_Reset()
 	 * Attempt to reset only if we already have setup memory accounting
 	 * and the memory monitoring is ON
 	 */
-	if (NULL != longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot])
+	if (MemoryAccounting_IsInitialized())
 	{
 		/* No one should create child context under MemoryAccountMemoryContext */
 		Assert(MemoryAccountMemoryContext->firstchild == NULL);
@@ -184,16 +221,6 @@ MemoryAccounting_Reset()
 	}
 
 	InitMemoryAccounting();
-}
-
-/*
- * MemoryAccounting_ResetPeakBalance
- *		Resets the peak memory account balance by setting it to the current balance.
- */
-void
-MemoryAccounting_ResetPeakBalance()
-{
-	MemoryAccountingPeakBalance = MemoryAccountingOutstandingBalance;
 }
 
 /*
@@ -214,7 +241,10 @@ MemoryAccounting_CreateAccount(long maxLimitInKB, MemoryOwnerType ownerType)
 
 	if (MEMORY_OWNER_TYPE_Undefined == ActiveMemoryAccountId)
 	{
-		/* Even Logical Root will have itself as parent */
+		/*
+		 * If there is no active account, assign logical root as the parent.
+		 * This means the logical root will have itself as parent.
+		 */
 		parentId = MEMORY_OWNER_TYPE_LogicalRoot;
 	}
 	else
@@ -236,14 +266,14 @@ MemoryAccountIdType
 MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
 {
 	/*
-	 * We cannot validate for stale account, as there is no guarantee
-	 * that we will have fresh account all the time. We will dynamically
-	 * switch to Rollover for stale accounts. But, for now, we at least
-	 * assert that the passed accountId was "ever" created. Note: this
-	 * assumes no overflow in the nextAccountId. For now, we don't have
-	 * overflow. But, in the future if we implement overflow for our
-	 * 64 bit id counter, we will need to get rid of this Assert or be
-	 * more smart about it
+	 * We cannot validate the actual account pointer as there is no guarantee
+	 * that we will have live accounts all the time. We will dynamically
+	 * switch to Rollover for dead accounts. But, for now, we at least
+	 * assert that the passed accountId was "ever" created.
+	 *
+	 * Note: this assumes no overflow in the nextAccountId. For now, we don't have
+	 * overflow. But, in the future if we implement overflow for our 64 bit id
+	 * counter, we will need to get rid of this Assert or be more smart about it
 	 */
 	Assert(desiredAccountId < nextAccountId);
 	MemoryAccountIdType oldAccountId = ActiveMemoryAccountId;
@@ -252,6 +282,13 @@ MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
 	return oldAccountId;
 }
 
+/*
+ * MemoryAccounting_SizeOfAccountInBytes
+ *		Returns the number of bytes needed to hold a memory account.
+ *
+ *		This method is useful to "outside" world to allocate appropriate buffer to
+ *		hold a memory account without having access to MemoryAccount struct.
+ */
 size_t
 MemoryAccounting_SizeOfAccountInBytes()
 {
@@ -260,7 +297,7 @@ MemoryAccounting_SizeOfAccountInBytes()
 
 /*
  * MemoryAccounting_GetAccountPeakBalance
- *		Returns peak memory
+ *		Returns peak memory usage of an owner
  *
  * memoryAccountId: The concerned account.
  */
@@ -272,7 +309,7 @@ MemoryAccounting_GetAccountPeakBalance(MemoryAccountIdType memoryAccountId)
 
 /*
  * MemoryAccounting_GetAccountCurrentBalance
- *		Returns current memory
+ *		Returns current memory usage of an owner
  *
  * memoryAccountId: The concerned account.
  */
@@ -305,134 +342,6 @@ MemoryAccounting_GetGlobalPeak()
 	return MemoryAccountingPeakBalance;
 }
 
-static const char*
-MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
-{
-	switch (ownerType)
-	{
-		/* Long living accounts */
-		case MEMORY_OWNER_TYPE_LogicalRoot:
-			return "Root";
-		case MEMORY_OWNER_TYPE_SharedChunkHeader:
-			return "SharedHeader";
-		case MEMORY_OWNER_TYPE_Rollover:
-			return "Rollover";
-		case MEMORY_OWNER_TYPE_MemAccount:
-			return "MemAcc";
-		case MEMORY_OWNER_TYPE_Exec_AlienShared:
-			return "X_Alien";
-
-		/* Short living accounts */
-		case MEMORY_OWNER_TYPE_Top:
-			return "Top";
-		case MEMORY_OWNER_TYPE_MainEntry:
-			return "Main";
-		case MEMORY_OWNER_TYPE_Parser:
-			return "Parser";
-		case MEMORY_OWNER_TYPE_Planner:
-			return "Planner";
-		case MEMORY_OWNER_TYPE_Optimizer:
-			return "Optimizer";
-		case MEMORY_OWNER_TYPE_Dispatcher:
-			return "Dispatcher";
-		case MEMORY_OWNER_TYPE_Serializer:
-			return "Serializer";
-		case MEMORY_OWNER_TYPE_Deserializer:
-			return "Deserializer";
-
-		case MEMORY_OWNER_TYPE_EXECUTOR:
-			return "Executor";
-		case MEMORY_OWNER_TYPE_Exec_Result:
-			return "X_Result";
-		case MEMORY_OWNER_TYPE_Exec_Append:
-			return "X_Append";
-		case MEMORY_OWNER_TYPE_Exec_Sequence:
-			return "X_Sequence";
-		case MEMORY_OWNER_TYPE_Exec_BitmapAnd:
-			return "X_BitmapAnd";
-		case MEMORY_OWNER_TYPE_Exec_BitmapOr:
-			return "X_BitmapOr";
-		case MEMORY_OWNER_TYPE_Exec_SeqScan:
-			return "X_SeqScan";
-		case MEMORY_OWNER_TYPE_Exec_ExternalScan:
-			return "X_ExternalScan";
-		case MEMORY_OWNER_TYPE_Exec_AppendOnlyScan:
-			return "X_AppendOnlyScan";
-		case MEMORY_OWNER_TYPE_Exec_AOCSScan:
-			return "X_AOCSCAN";
-		case MEMORY_OWNER_TYPE_Exec_TableScan:
-			return "X_TableScan";
-		case MEMORY_OWNER_TYPE_Exec_DynamicTableScan:
-			return "X_DynamicTableScan";
-		case MEMORY_OWNER_TYPE_Exec_IndexScan:
-			return "X_IndexScan";
-		case MEMORY_OWNER_TYPE_Exec_DynamicIndexScan:
-			return "X_DynamicIndexScan";
-		case MEMORY_OWNER_TYPE_Exec_BitmapIndexScan:
-			return "X_BitmapIndexScan";
-		case MEMORY_OWNER_TYPE_Exec_BitmapHeapScan:
-			return "X_BitmapHeapScan";
-		case MEMORY_OWNER_TYPE_Exec_BitmapAppendOnlyScan:
-			return "X_BitmapAppendOnlyScan";
-		case MEMORY_OWNER_TYPE_Exec_TidScan:
-			return "X_TidScan";
-		case MEMORY_OWNER_TYPE_Exec_SubqueryScan:
-			return "X_SubqueryScan";
-		case MEMORY_OWNER_TYPE_Exec_FunctionScan:
-			return "X_FunctionScan";
-		case MEMORY_OWNER_TYPE_Exec_TableFunctionScan:
-			return "X_TableFunctionScan";
-		case MEMORY_OWNER_TYPE_Exec_ValuesScan:
-			return "X_ValuesScan";
-		case MEMORY_OWNER_TYPE_Exec_NestLoop:
-			return "X_NestLoop";
-		case MEMORY_OWNER_TYPE_Exec_MergeJoin:
-			return "X_MergeJoin";
-		case MEMORY_OWNER_TYPE_Exec_HashJoin:
-			return "X_HashJoin";
-		case MEMORY_OWNER_TYPE_Exec_Material:
-			return "X_Material";
-		case MEMORY_OWNER_TYPE_Exec_Sort:
-			return "X_Sort";
-		case MEMORY_OWNER_TYPE_Exec_Agg:
-			return "X_Agg";
-		case MEMORY_OWNER_TYPE_Exec_Unique:
-			return "X_Unique";
-		case MEMORY_OWNER_TYPE_Exec_Hash:
-			return "X_Hash";
-		case MEMORY_OWNER_TYPE_Exec_SetOp:
-			return "X_SetOp";
-		case MEMORY_OWNER_TYPE_Exec_Limit:
-			return "X_Limit";
-		case MEMORY_OWNER_TYPE_Exec_Motion:
-			return "X_Motion";
-		case MEMORY_OWNER_TYPE_Exec_ShareInputScan:
-			return "X_ShareInputScan";
-		case MEMORY_OWNER_TYPE_Exec_Window:
-			return "X_Window";
-		case MEMORY_OWNER_TYPE_Exec_Repeat:
-			return "X_Repeat";
-		case MEMORY_OWNER_TYPE_Exec_DML:
-			return "X_DML";
-		case MEMORY_OWNER_TYPE_Exec_SplitUpdate:
-			return "X_SplitUpdate";
-		case MEMORY_OWNER_TYPE_Exec_RowTrigger:
-			return "X_RowTrigger";
-		case MEMORY_OWNER_TYPE_Exec_AssertOp:
-			return "X_AssertOp";
-		case MEMORY_OWNER_TYPE_Exec_BitmapTableScan:
-			return "X_BitmapTableScan";
-		case MEMORY_OWNER_TYPE_Exec_PartitionSelector:
-			return "X_PartitionSelector";
-		default:
-			Assert(false);
-			break;
-	}
-
-	return "Error";
-
-}
-
 /*
  * MemoryAccounting_Serialize
  * 		Serializes the current memory accounting tree into the "buffer"
@@ -457,69 +366,6 @@ MemoryAccounting_Serialize(StringInfoData *buffer)
 	}
 	END_MEMORY_ACCOUNT();
 	return MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount;
-}
-
-/*
- * MemoryAccounting_ToString
- *		Converts a memory account tree rooted at "root" to string using tree
- *		walker and repeated calls of MemoryAccountToString
- *
- * root: The root of the tree (used recursively)
- * str: The output buffer
- * indentation: The indentation of the root
- */
-void
-MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation)
-{
-	MemoryAccountSerializerCxt cxt;
-	cxt.buffer = str;
-	cxt.memoryAccountCount = 0;
-	cxt.prefix = NULL;
-
-	uint32 totalWalked = 0;
-	MemoryAccountTreeWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
-}
-
-/*
- * MemoryAccounting_ToCSV
- *		Converts a memory account tree rooted at "root" to string using tree
- *		walker and repeated calls of MemoryAccountToCSV
- *
- * root: The root of the tree (used recursively)
- * str: The output buffer
- * prefix: A common prefix for each csv line
- */
-void
-MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefix)
-{
-	MemoryAccountSerializerCxt cxt;
-	cxt.buffer = str;
-	cxt.memoryAccountCount = 0;
-	cxt.prefix = prefix;
-
-	uint32 totalWalked = 0;
-
-	int64 vmem_reserved = VmemTracker_GetMaxReservedVmemBytes();
-
-	/*
-	 * Add vmem reserved as reported by memprot. We report the vmem reserved in the
-	 * "allocated" and "peak" fields. We set the freed to 0.
-	 */
-	appendStringInfo(str, "%s,%d,%u,%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
-			prefix, MEMORY_STAT_TYPE_VMEM_RESERVED,
-			totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
-			(int64) 0 /* Quota */, vmem_reserved /* Peak */, vmem_reserved /* Allocated */, (int64) 0 /* Freed */);
-
-	/*
-	 * Add peak memory observed from inside memory accounting among all allocations.
-	 */
-	appendStringInfo(str, "%s,%d,%u,%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
-			prefix, MEMORY_STAT_TYPE_MEMORY_ACCOUNTING_PEAK,
-			totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
-			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */,
-			MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */);
-
-	MemoryAccountTreeWalkNode(root, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
 }
 
 /*
@@ -584,14 +430,23 @@ MemoryAccounting_SaveToFile(int currentSliceId)
 	initStringInfo(&memBuf);
 
 	/* run_id, dataset_id, query_id, scale_factor, gp_session_id, current_statement_timestamp, slice_id, segment_idx, */
-	appendStringInfo(&prefix, "%s,%s,%s,%u,%u,%d,%" PRIu64 ",%d,%d",
+	appendStringInfo(&prefix, "%s,%s,%s,%u,%u,%d," UINT64_FORMAT ",%d,%d",
 		memory_profiler_run_id, memory_profiler_dataset_id, memory_profiler_query_id,
 		memory_profiler_dataset_size, statement_mem, gp_session_id, GetCurrentStatementStartTimestamp(),
 		currentSliceId, GpIdentity.segindex);
 
 	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Undefined],
 			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
-	MemoryAccounting_ToCSV(&tree[MEMORY_OWNER_TYPE_LogicalRoot], &memBuf, prefix.data);
+	PsuedoAccountsToCSV(&memBuf, prefix.data);
+
+	MemoryAccountSerializerCxt cxt;
+	cxt.buffer = &memBuf;
+	cxt.memoryAccountCount = 0;
+	cxt.prefix = prefix.data;
+
+	uint32 totalWalked = 0;
+
+	MemoryAccountTreeWalkNode(&tree[MEMORY_OWNER_TYPE_LogicalRoot], MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
 	SaveMemoryBufToDisk(&memBuf, prefix.data);
 
 	pfree(prefix.data);
@@ -620,11 +475,11 @@ MemoryAccounting_SaveToLog()
 	/* Write the header for the subsequent lines of memory usage information */
     write_stderr("memory: account_name, child_id, parent_id, quota, peak, allocated, freed, current\n");
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", "Vmem",
+    write_stderr("memory: %s, %u, %u, " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT "\n", "Vmem",
     		totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, vmem_reserved /* Peak */, vmem_reserved /* Allocated */, (int64) 0 /* Freed */, vmem_reserved /* Current */);
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", "Peak",
+    write_stderr("memory: %s, %u, %u, " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT "\n", "Peak",
     		totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
 			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */, MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */, MemoryAccountingPeakBalance /* Current */);
 
@@ -640,14 +495,44 @@ MemoryAccounting_SaveToLog()
 /*****************************************************************************
  *	  PRIVATE ROUTINES FOR MEMORY ACCOUNTING								 *
  *****************************************************************************/
+
+/* Initializes all the long living accounts */
 static void
-InitShortLivingMemoryAccountArray()
+InitLongLivingAccounts() {
+	/*
+	 * All the long living accounts are created together, so if logical root
+	 * is null, then other long-living accounts should be the null too
+	 */
+	Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL && MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
+	Assert(MemoryAccountMemoryContext == NULL);
+	for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot;
+			longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING;
+			longLivingIdx++)
+	{
+		/* For long living account */
+		MemoryAccountIdType newAccountId = MemoryAccounting_CreateAccount(0, longLivingIdx);
+		Assert(longLivingIdx == newAccountId);
+	}
+	/* Now set all the global memory accounts */
+	SharedChunkHeadersMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_SharedChunkHeader];
+	RolloverMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
+	MemoryAccountMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_MemAccount];
+	AlienExecutorMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Exec_AlienShared];
+}
+
+/* Initializes all the short living accounts */
+static void
+InitShortLivingMemoryAccounts()
 {
 	Assert(NULL == shortLivingMemoryAccountArray);
 	Assert(NULL != MemoryAccountMemoryContext && MemoryAccountMemoryAccount != NULL);
 
-    MemoryContext oldContext = MemoryContextSwitchTo(MemoryAccountMemoryContext);
-    MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_MemAccount);
+	MemoryContext oldContext = MemoryContextSwitchTo(MemoryAccountMemoryContext);
+	MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_MemAccount);
 
 	shortLivingMemoryAccountArray = palloc0(sizeof(MemoryAccountArray));
 	shortLivingMemoryAccountArray->accountCount = 0;
@@ -655,9 +540,10 @@ InitShortLivingMemoryAccountArray()
 	shortLivingMemoryAccountArray->arraySize = SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN;
 
 	MemoryAccounting_SwitchAccount(oldAccountId);
-    MemoryContextSwitchTo(oldContext);
+	MemoryContextSwitchTo(oldContext);
 }
 
+/* Add a long living account to the longLivingMemoryAccountArray */
 static void
 AddToLongLivingAccountArray(MemoryAccount *newAccount)
 {
@@ -666,6 +552,7 @@ AddToLongLivingAccountArray(MemoryAccount *newAccount)
 	longLivingMemoryAccountArray[newAccount->id] = newAccount;
 }
 
+/* Add a short living account to the shortLivingMemoryAccountArray */
 static void
 AddToShortLivingAccountArray(MemoryAccount *newAccount)
 {
@@ -815,11 +702,13 @@ CheckMemoryAccountingLeak()
 }
 
 /*
- * Returns a combined array index where the first MEMORY_OWNER_TYPE_END_LONG_LIVING indices
- * are saved for long living accounts and short living account indices follow after that
+ * Returns a combined array index where the long and short living accounts are together.
+ * The first MEMORY_OWNER_TYPE_END_LONG_LIVING number of indices are reserved for long
+ * living accounts and short living accounts follow after that.
  */
 static MemoryAccountIdType
-ConvertIdToUniversalArrayIndex(MemoryAccountIdType id, MemoryAccountIdType liveStartId, MemoryAccountIdType shortLivingCount)
+ConvertIdToUniversalArrayIndex(MemoryAccountIdType id, MemoryAccountIdType liveStartId,
+		MemoryAccountIdType shortLivingCount)
 {
 	if (id >= MEMORY_OWNER_TYPE_LogicalRoot && id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
@@ -832,9 +721,10 @@ ConvertIdToUniversalArrayIndex(MemoryAccountIdType id, MemoryAccountIdType liveS
 	else
 	{
 		/* Note, we cannot map ID to rollover here as we expect a live account id */
-		Assert(!"Cannot map id to array index");
+		elog(ERROR, "Cannot map id to array index");
 	}
 
+	/* Keep the compiler happy */
 	return MEMORY_OWNER_TYPE_Undefined;
 }
 
@@ -1019,13 +909,144 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
 
     Assert(memoryAccount->peak >= MemoryAccounting_GetBalance(memoryAccount));
     /* We print only integer valued memory consumption, in standard GPDB KB unit */
-    appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur %" PRIu64 "/%" PRIu64 "bytes. Quota: %" PRIu64 "bytes.\n",
+    appendStringInfo(memAccountCxt->buffer, "%s: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: " UINT64_FORMAT "bytes.\n",
     	MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
 		memoryAccount->peak, MemoryAccounting_GetBalance(memoryAccount), memoryAccount->maxLimit);
 
     memAccountCxt->memoryAccountCount++;
 
     return CdbVisit_Walk;
+}
+
+/*
+ * MemoryAccounting_GetOwnerName
+ *		Returns the human readable name of an owner
+ */
+static const char*
+MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
+{
+	switch (ownerType)
+	{
+		/* Long living accounts */
+		case MEMORY_OWNER_TYPE_LogicalRoot:
+			return "Root";
+		case MEMORY_OWNER_TYPE_SharedChunkHeader:
+			return "SharedHeader";
+		case MEMORY_OWNER_TYPE_Rollover:
+			return "Rollover";
+		case MEMORY_OWNER_TYPE_MemAccount:
+			return "MemAcc";
+		case MEMORY_OWNER_TYPE_Exec_AlienShared:
+			return "X_Alien";
+
+		/* Short living accounts */
+		case MEMORY_OWNER_TYPE_Top:
+			return "Top";
+		case MEMORY_OWNER_TYPE_MainEntry:
+			return "Main";
+		case MEMORY_OWNER_TYPE_Parser:
+			return "Parser";
+		case MEMORY_OWNER_TYPE_Planner:
+			return "Planner";
+		case MEMORY_OWNER_TYPE_Optimizer:
+			return "Optimizer";
+		case MEMORY_OWNER_TYPE_Dispatcher:
+			return "Dispatcher";
+		case MEMORY_OWNER_TYPE_Serializer:
+			return "Serializer";
+		case MEMORY_OWNER_TYPE_Deserializer:
+			return "Deserializer";
+
+		case MEMORY_OWNER_TYPE_EXECUTOR:
+			return "Executor";
+		case MEMORY_OWNER_TYPE_Exec_Result:
+			return "X_Result";
+		case MEMORY_OWNER_TYPE_Exec_Append:
+			return "X_Append";
+		case MEMORY_OWNER_TYPE_Exec_Sequence:
+			return "X_Sequence";
+		case MEMORY_OWNER_TYPE_Exec_BitmapAnd:
+			return "X_BitmapAnd";
+		case MEMORY_OWNER_TYPE_Exec_BitmapOr:
+			return "X_BitmapOr";
+		case MEMORY_OWNER_TYPE_Exec_SeqScan:
+			return "X_SeqScan";
+		case MEMORY_OWNER_TYPE_Exec_ExternalScan:
+			return "X_ExternalScan";
+		case MEMORY_OWNER_TYPE_Exec_AppendOnlyScan:
+			return "X_AppendOnlyScan";
+		case MEMORY_OWNER_TYPE_Exec_AOCSScan:
+			return "X_AOCSCAN";
+		case MEMORY_OWNER_TYPE_Exec_TableScan:
+			return "X_TableScan";
+		case MEMORY_OWNER_TYPE_Exec_DynamicTableScan:
+			return "X_DynamicTableScan";
+		case MEMORY_OWNER_TYPE_Exec_IndexScan:
+			return "X_IndexScan";
+		case MEMORY_OWNER_TYPE_Exec_DynamicIndexScan:
+			return "X_DynamicIndexScan";
+		case MEMORY_OWNER_TYPE_Exec_BitmapIndexScan:
+			return "X_BitmapIndexScan";
+		case MEMORY_OWNER_TYPE_Exec_BitmapHeapScan:
+			return "X_BitmapHeapScan";
+		case MEMORY_OWNER_TYPE_Exec_BitmapAppendOnlyScan:
+			return "X_BitmapAppendOnlyScan";
+		case MEMORY_OWNER_TYPE_Exec_TidScan:
+			return "X_TidScan";
+		case MEMORY_OWNER_TYPE_Exec_SubqueryScan:
+			return "X_SubqueryScan";
+		case MEMORY_OWNER_TYPE_Exec_FunctionScan:
+			return "X_FunctionScan";
+		case MEMORY_OWNER_TYPE_Exec_TableFunctionScan:
+			return "X_TableFunctionScan";
+		case MEMORY_OWNER_TYPE_Exec_ValuesScan:
+			return "X_ValuesScan";
+		case MEMORY_OWNER_TYPE_Exec_NestLoop:
+			return "X_NestLoop";
+		case MEMORY_OWNER_TYPE_Exec_MergeJoin:
+			return "X_MergeJoin";
+		case MEMORY_OWNER_TYPE_Exec_HashJoin:
+			return "X_HashJoin";
+		case MEMORY_OWNER_TYPE_Exec_Material:
+			return "X_Material";
+		case MEMORY_OWNER_TYPE_Exec_Sort:
+			return "X_Sort";
+		case MEMORY_OWNER_TYPE_Exec_Agg:
+			return "X_Agg";
+		case MEMORY_OWNER_TYPE_Exec_Unique:
+			return "X_Unique";
+		case MEMORY_OWNER_TYPE_Exec_Hash:
+			return "X_Hash";
+		case MEMORY_OWNER_TYPE_Exec_SetOp:
+			return "X_SetOp";
+		case MEMORY_OWNER_TYPE_Exec_Limit:
+			return "X_Limit";
+		case MEMORY_OWNER_TYPE_Exec_Motion:
+			return "X_Motion";
+		case MEMORY_OWNER_TYPE_Exec_ShareInputScan:
+			return "X_ShareInputScan";
+		case MEMORY_OWNER_TYPE_Exec_Window:
+			return "X_Window";
+		case MEMORY_OWNER_TYPE_Exec_Repeat:
+			return "X_Repeat";
+		case MEMORY_OWNER_TYPE_Exec_DML:
+			return "X_DML";
+		case MEMORY_OWNER_TYPE_Exec_SplitUpdate:
+			return "X_SplitUpdate";
+		case MEMORY_OWNER_TYPE_Exec_RowTrigger:
+			return "X_RowTrigger";
+		case MEMORY_OWNER_TYPE_Exec_AssertOp:
+			return "X_AssertOp";
+		case MEMORY_OWNER_TYPE_Exec_BitmapTableScan:
+			return "X_BitmapTableScan";
+		case MEMORY_OWNER_TYPE_Exec_PartitionSelector:
+			return "X_PartitionSelector";
+		default:
+			Assert(false);
+			break;
+	}
+
+	return "Error";
 }
 
 /**
@@ -1052,7 +1073,7 @@ MemoryAccountToCSV(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 	/*
 	 * PREFIX, ownerType, curWalkSerial, parentWalkSerial, maxLimit, peak, allocated, freed
 	 */
-	appendStringInfo(memAccountCxt->buffer, "%s,%u,%u,%u,%" PRIu64 ",%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n",
+	appendStringInfo(memAccountCxt->buffer, "%s,%u,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
 			memAccountCxt->prefix, memoryAccount->ownerType,
 			curWalkSerial, parentWalkSerial,
 			memoryAccount->maxLimit,
@@ -1064,6 +1085,38 @@ MemoryAccountToCSV(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
     memAccountCxt->memoryAccountCount++;
 
     return CdbVisit_Walk;
+}
+
+/*
+ * PsuedoAccountsToCSV
+ *		Formats pseudo accounts such as vmem reserved and overall peak to CSV
+ *
+ * root: The root of the tree (used recursively)
+ * str: The output buffer
+ * prefix: A common prefix for each csv line
+ */
+static void
+PsuedoAccountsToCSV(StringInfoData *str, char *prefix)
+{
+	int64 vmem_reserved = VmemTracker_GetMaxReservedVmemBytes();
+
+	/*
+	 * Add vmem reserved as reported by memprot. We report the vmem reserved in the
+	 * "allocated" and "peak" fields. We set the freed to 0.
+	 */
+	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
+			prefix, MEMORY_STAT_TYPE_VMEM_RESERVED,
+			0 /* Child walk serial */, 0 /* Parent walk serial */,
+			(int64) 0 /* Quota */, vmem_reserved /* Peak */, vmem_reserved /* Allocated */, (int64) 0 /* Freed */);
+
+	/*
+	 * Add peak memory observed from inside memory accounting among all allocations.
+	 */
+	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
+			prefix, MEMORY_STAT_TYPE_MEMORY_ACCOUNTING_PEAK,
+			0 /* Child walk serial */, 0 /* Parent walk serial */,
+			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */,
+			MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */);
 }
 
 /**
@@ -1087,7 +1140,7 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 
 	MemoryAccount *memoryAccount = memoryAccountTreeNode->account;
 
-    write_stderr("memory: %s, %u, %u, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
+    write_stderr("memory: %s, %u, %u, " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT ", " UINT64_FORMAT "\n", MemoryAccounting_GetOwnerName(memoryAccount->ownerType),
     		curWalkSerial /* Child walk serial */, parentWalkSerial /* Parent walk serial */,
 			(int64) memoryAccount->maxLimit /* Quota */,
 			memoryAccount->peak /* Peak */,
@@ -1099,6 +1152,27 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 }
 
 /*
+ * MemoryAccounting_ToString
+ *		Converts a memory account tree rooted at "root" to string using tree
+ *		walker and repeated calls of MemoryAccountToString
+ *
+ * root: The root of the tree (used recursively)
+ * str: The output buffer
+ * indentation: The indentation of the root
+ */
+static void
+MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation)
+{
+	MemoryAccountSerializerCxt cxt;
+	cxt.buffer = str;
+	cxt.memoryAccountCount = 0;
+	cxt.prefix = NULL;
+
+	uint32 totalWalked = 0;
+	MemoryAccountTreeWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
+}
+
+/*
  * InitMemoryAccounting
  *		Internal method that should only be used to initialize a memory accounting
  *		subsystem. Creates basic data structure such as the MemoryAccountMemoryContext,
@@ -1107,40 +1181,35 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
 static void
 InitMemoryAccounting()
 {
+	/* Either we never initialized or we are re-initializing after reset and rollover should be the active owner */
 	Assert(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Undefined || ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Rollover);
 
 	/*
-	 * Order of creation:
+	 * We have long and short living accounts. Long living accounts are created only
+	 * once and they live for the entire duration of a QE. We create all the long living
+	 * accounts first, only if they were never created before.
 	 *
-	 * 1. Root
-	 * 2. SharedChunkHeadersMemoryAccount
-	 * 3. RolloverMemoryAccount
-	 * 4. MemoryAccountMemoryAccount
-	 * 5. MemoryAccountMemoryContext
+	 * The memory accounting framework is a self-auditing framework in terms of memory usage.
+	 * All the accounts are created in MemoryAccountMemoryContext and tracked in a special
+	 * account MemoryAccountMemoryAccount. The MemoryAccountMemoryContext is created only
+	 * once, during the first initialization. Subsequently, this context is reset once per-statement
+	 * to prevent accumulating memory in accounting data structures.
 	 *
-	 * The above 5 survive reset (MemoryAccountMemoryContext
-	 * gets reset, but not deleted).
+	 * As MemoryAccountMemoryContext is reset once per-statement, we don't create the long living
+	 * accounts in that context. Rather the long living accounts are created in TopMemoryContext.
 	 *
-	 * Next set ActiveMemoryAccount = MemoryAccountMemoryAccount
+	 * Once the long living accounts are created we set the MemoryAccountMemoryAccount
+	 * as the ActiveMemoryAccount and proceed with the creation of short living accounts.
 	 *
-	 * Note, don't set MemoryAccountMemoryAccount before creating
-	 * MemoryAccuontMemoryContext, as that will put the balance
-	 * of MemoryAccountMemoryContext in the MemoryAccountMemoryAccount,
-	 * preventing it from going to 0, upon reset of MemoryAccountMemoryContext.
-	 * MemoryAccountMemoryAccount should only contain balance from actual
-	 * account creation, not the overhead of the context.
-	 *
-	 * Once the long living accounts are done and MemoryAccountMemoryAccount
-	 * is the ActiveMemoryAccount, we proceed to create TopMemoryAccount
-	 *
-	 * This ensures the following:
+	 * This process ensures the following:
 	 *
 	 * 1. Accounting is triggered only if the ActiveMemoryAccount is non-null
 	 *
 	 * 2. If the ActiveMemoryAccount is non-null, we are guaranteed to have
-	 * SharedChunkHeadersMemoryAccount, so that we can account shared chunk headers
+	 * SharedChunkHeadersMemoryAccount (which is a long living account), so that we can account
+	 * shared chunk headers.
 	 *
-	 * 3. All short-living accounts (including Top) are accounted in MemoryAccountMemoryAccount
+	 * 3. All short-living accounts are accounted in MemoryAccountMemoryAccount
 	 *
 	 * 4. All short-living accounts are allocated in MemoryAccountMemoryContext
 	 *
@@ -1150,30 +1219,18 @@ InitMemoryAccounting()
 	 * are very few and their overhead is already known).
 	 */
 
-	if (longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot] == NULL)
+	if (!MemoryAccounting_IsInitialized())
 	{
 		/*
 		 * All the long living accounts are created together, so if logical root
 		 * is null, then other long-living accounts should be the null too
 		 */
-		Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL &&
-				MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
+		InitLongLivingAccounts();
 
-		Assert(MemoryAccountMemoryContext == NULL);
-		for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot; longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingIdx++)
-		{
-			/* For long living account */
-			MemoryAccountIdType newAccountId = MemoryAccounting_CreateAccount(0, longLivingIdx);
-			Assert(longLivingIdx == newAccountId);
-		}
-
-		/* Now set all the global memory accounts */
-		SharedChunkHeadersMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_SharedChunkHeader];
-		RolloverMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
-		MemoryAccountMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_MemAccount];
-		AlienExecutorMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Exec_AlienShared];
-
-		/* Now initiate the memory accounting system. */
+		/*
+		 * Now create the context that contains all short-living accounts to ensure timely
+		 * free of all the short-living account memory.
+		 */
 		MemoryAccountMemoryContext = AllocSetContextCreate(TopMemoryContext,
 											 "MemoryAccountMemoryContext",
 											 ALLOCSET_DEFAULT_MINSIZE,
@@ -1195,19 +1252,13 @@ InitMemoryAccounting()
 				AlienExecutorMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot);
 	}
 
-	/*
-	 * Temporarily active MemoryAccountMemoryAccount. Once
-	 * all the setup is done, TopMemoryAccount will become
-	 * the ActiveMemoryAccount
-	 */
-	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_MemAccount;
-
-	InitShortLivingMemoryAccountArray();
+	InitShortLivingMemoryAccounts();
 
 	/* For AlienExecutorMemoryAccount we need TopMemoryAccount as parent */
 	ActiveMemoryAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Top);
 }
 
+/* Clear out all the balance of an account */
 static void
 ClearAccount(MemoryAccount* memoryAccount)
 {
@@ -1230,7 +1281,7 @@ AdvanceMemoryAccountingGeneration()
 	 * is the only account to survive this MemoryAccountMemoryContext
 	 * reset.
 	 */
-	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Rollover;
+	MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_Rollover);
 	MemoryContextReset(MemoryAccountMemoryContext);
 	Assert(MemoryAccountMemoryAccount->allocated == MemoryAccountMemoryAccount->freed);
 	shortLivingMemoryAccountArray = NULL;
@@ -1258,6 +1309,16 @@ AdvanceMemoryAccountingGeneration()
 	liveAccountStartId = nextAccountId;
 
 	Assert(RolloverMemoryAccount->peak >= MemoryAccountingPeakBalance);
+}
+
+/*
+ * MemoryAccounting_ResetPeakBalance
+ *		Resets the peak memory account balance by setting it to the current balance.
+ */
+static void
+MemoryAccounting_ResetPeakBalance()
+{
+	MemoryAccountingPeakBalance = MemoryAccountingOutstandingBalance;
 }
 
 /*
