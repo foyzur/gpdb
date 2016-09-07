@@ -158,4 +158,11 @@ MemoryAccounting_Free(MemoryAccountIdType memoryAccountId, Size allocatedSize)
 	return true;
 }
 
+/* Is the memory accounting framework initialized? */
+static inline bool
+MemoryAccounting_IsInitialized()
+{
+	return (NULL != longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot]);
+}
+
 #endif   /* MEMACCOUNTING_PRIVATE_H */

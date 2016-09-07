@@ -25,23 +25,45 @@
 #define MEMORY_REPORT_FILE_NAME_LENGTH 255
 #define SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN 64
 
-/* Saves serializer context info during walking the memory account tree */
+/* Saves serializer context info during walking the memory account array */
 typedef struct MemoryAccountSerializerCxt
 {
 	/* How many was serialized in the buffer */
 	int memoryAccountCount;
 	/* Where to serialize */
 	StringInfoData *buffer;
-	char *prefix; /* Prefix to add before each line */
+	/* Prefix to add before each line */
+	char *prefix;
 } MemoryAccountSerializerCxt;
 
+/*
+ * A tree representation of the memory account array.
+ *
+ * Our existing "rendering" algorithms expect a tree. So, a quick way of
+ * reusing these functions is to convert the array to a tree.
+ */
 typedef struct MemoryAccountTree {
 	MemoryAccount *account;
 	struct MemoryAccountTree *firstChild;
 	struct MemoryAccountTree *nextSibling;
 } MemoryAccountTree;
 
+/*
+ * Account Ids monotonically increases as new accounts are created. Many of these
+ * accounts may no longer exist as we drop accounts at the end of each statement.
+ * Therefore, we save a marker Id to indicate the start Id of "live" accounts. These
+ * live accounts are directly related to the currently executing statement.
+ *
+ * Note: only short-living accounts are tested with "liveness". Long living accounts
+ * have fixed Ids that run between MEMORY_OWNER_TYPE_START_LONG_LIVING and
+ * MEMORY_OWNER_TYPE_END_LONG_LIVING and these Ids are smaller than liveAccountStartId
+ * but are still considered live for the duration of a session.
+ */
 MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+/*
+ * A monotonically increasing counter to get the next Id at the time of creation of
+ * a new short-living account.
+ */
 MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 
 /*
@@ -120,6 +142,14 @@ MemoryAccount *MemoryAccountMemoryAccount = NULL;
 
 // Array of accounts available
 MemoryAccountArray* shortLivingMemoryAccountArray = NULL;
+/*
+ * Long living accounts live during the entire session across all the statements
+ * and have fixed Ids that run between MEMORY_OWNER_TYPE_START_LONG_LIVING
+ * and MEMORY_OWNER_TYPE_END_LONG_LIVING. They are also singleton per-owner. So,
+ * only one account exist per-owner type.
+ *
+ * Note: index 0 is saved for MEMORY_OWNER_TYPE_Undefined
+*/
 MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING + 1] = {NULL};
 
 /*
@@ -167,7 +197,7 @@ MemoryAccounting_Reset()
 	 * Attempt to reset only if we already have setup memory accounting
 	 * and the memory monitoring is ON
 	 */
-	if (NULL != longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot])
+	if (MemoryAccounting_IsInitialized())
 	{
 		/* No one should create child context under MemoryAccountMemoryContext */
 		Assert(MemoryAccountMemoryContext->firstchild == NULL);
@@ -1150,7 +1180,7 @@ InitMemoryAccounting()
 	 * are very few and their overhead is already known).
 	 */
 
-	if (longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_LogicalRoot] == NULL)
+	if (!MemoryAccounting_IsInitialized())
 	{
 		/*
 		 * All the long living accounts are created together, so if logical root
