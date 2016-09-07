@@ -646,8 +646,8 @@ InitShortLivingMemoryAccountArray()
 	Assert(NULL == shortLivingMemoryAccountArray);
 	Assert(NULL != MemoryAccountMemoryContext && MemoryAccountMemoryAccount != NULL);
 
-    MemoryContext oldContext = MemoryContextSwitchTo(MemoryAccountMemoryContext);
-    MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_MemAccount);
+	MemoryContext oldContext = MemoryContextSwitchTo(MemoryAccountMemoryContext);
+	MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_MemAccount);
 
 	shortLivingMemoryAccountArray = palloc0(sizeof(MemoryAccountArray));
 	shortLivingMemoryAccountArray->accountCount = 0;
@@ -655,7 +655,7 @@ InitShortLivingMemoryAccountArray()
 	shortLivingMemoryAccountArray->arraySize = SHORT_LIVING_MEMORY_ACCOUNT_ARRAY_INIT_LEN;
 
 	MemoryAccounting_SwitchAccount(oldAccountId);
-    MemoryContextSwitchTo(oldContext);
+	MemoryContextSwitchTo(oldContext);
 }
 
 static void

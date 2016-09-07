@@ -68,8 +68,12 @@ extern bool gp_dump_memory_usage;
  */
 typedef enum MemoryOwnerType
 {
-	/* Undefined represents invalid account */
-	MEMORY_OWNER_TYPE_Undefined,
+	/*
+	 * Undefined represents invalid account. We explicitly start from 0
+	 * as we use the long living accounts' enumeration to index into the
+	 * long living accounts array.
+	 */
+	MEMORY_OWNER_TYPE_Undefined = 0,
 
 	/* Long-living accounts that survive reset */
 	MEMORY_OWNER_TYPE_START_LONG_LIVING,
