@@ -445,8 +445,7 @@ MemoryAccounting_SaveToFile(int currentSliceId)
 
 	uint32 totalWalked = 0;
 
-	MemoryAccountTreeWalkNode(tree, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
-
+	MemoryAccountTreeWalkNode(&tree[MEMORY_OWNER_TYPE_LogicalRoot], MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
 	SaveMemoryBufToDisk(&memBuf, prefix.data);
 
 	pfree(prefix.data);
