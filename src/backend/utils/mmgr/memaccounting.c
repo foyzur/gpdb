@@ -89,6 +89,9 @@ static void
 AdvanceMemoryAccountingGeneration(void);
 
 static void
+MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation);
+
+static void
 InitMemoryAccounting(void);
 
 static MemoryAccountTree*
@@ -111,6 +114,9 @@ MemoryAccountToString(MemoryAccountTree *memoryAccount, void *context,
 static CdbVisitOpt
 MemoryAccountToCSV(MemoryAccountTree *memoryAccount, void *context,
 		uint32 depth, uint32 parentWalkSerial, uint32 curWalkSerial);
+
+static void
+PsuedoAccountsToCSV(StringInfoData *str, char *prefix);
 
 static CdbVisitOpt
 MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context,
@@ -217,16 +223,6 @@ MemoryAccounting_Reset()
 }
 
 /*
- * MemoryAccounting_ResetPeakBalance
- *		Resets the peak memory account balance by setting it to the current balance.
- */
-void
-MemoryAccounting_ResetPeakBalance()
-{
-	MemoryAccountingPeakBalance = MemoryAccountingOutstandingBalance;
-}
-
-/*
  * MemoryAccounting_CreateAccount
  *		Public method to create a memory account. We use this to force outside
  *		world to accept the current memory account as the parent of the new memory
@@ -244,7 +240,10 @@ MemoryAccounting_CreateAccount(long maxLimitInKB, MemoryOwnerType ownerType)
 
 	if (MEMORY_OWNER_TYPE_Undefined == ActiveMemoryAccountId)
 	{
-		/* Even Logical Root will have itself as parent */
+		/*
+		 * If there is no active account, assign logical root as the parent.
+		 * This means the logical root will have itself as parent.
+		 */
 		parentId = MEMORY_OWNER_TYPE_LogicalRoot;
 	}
 	else
@@ -266,14 +265,14 @@ MemoryAccountIdType
 MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
 {
 	/*
-	 * We cannot validate for stale account, as there is no guarantee
-	 * that we will have fresh account all the time. We will dynamically
-	 * switch to Rollover for stale accounts. But, for now, we at least
-	 * assert that the passed accountId was "ever" created. Note: this
-	 * assumes no overflow in the nextAccountId. For now, we don't have
-	 * overflow. But, in the future if we implement overflow for our
-	 * 64 bit id counter, we will need to get rid of this Assert or be
-	 * more smart about it
+	 * We cannot validate the actual account pointer as there is no guarantee
+	 * that we will have live accounts all the time. We will dynamically
+	 * switch to Rollover for dead accounts. But, for now, we at least
+	 * assert that the passed accountId was "ever" created.
+	 *
+	 * Note: this assumes no overflow in the nextAccountId. For now, we don't have
+	 * overflow. But, in the future if we implement overflow for our 64 bit id
+	 * counter, we will need to get rid of this Assert or be more smart about it
 	 */
 	Assert(desiredAccountId < nextAccountId);
 	MemoryAccountIdType oldAccountId = ActiveMemoryAccountId;
@@ -282,6 +281,13 @@ MemoryAccounting_SwitchAccount(MemoryAccountIdType desiredAccountId)
 	return oldAccountId;
 }
 
+/*
+ * MemoryAccounting_SizeOfAccountInBytes
+ *		Returns the number of bytes needed to hold a memory account.
+ *
+ *		This method is useful to "outside" world to allocate appropriate buffer to
+ *		hold a memory account without having access to MemoryAccount struct.
+ */
 size_t
 MemoryAccounting_SizeOfAccountInBytes()
 {
@@ -290,7 +296,7 @@ MemoryAccounting_SizeOfAccountInBytes()
 
 /*
  * MemoryAccounting_GetAccountPeakBalance
- *		Returns peak memory
+ *		Returns peak memory usage of an owner
  *
  * memoryAccountId: The concerned account.
  */
@@ -302,7 +308,7 @@ MemoryAccounting_GetAccountPeakBalance(MemoryAccountIdType memoryAccountId)
 
 /*
  * MemoryAccounting_GetAccountCurrentBalance
- *		Returns current memory
+ *		Returns current memory usage of an owner
  *
  * memoryAccountId: The concerned account.
  */
@@ -335,134 +341,6 @@ MemoryAccounting_GetGlobalPeak()
 	return MemoryAccountingPeakBalance;
 }
 
-static const char*
-MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
-{
-	switch (ownerType)
-	{
-		/* Long living accounts */
-		case MEMORY_OWNER_TYPE_LogicalRoot:
-			return "Root";
-		case MEMORY_OWNER_TYPE_SharedChunkHeader:
-			return "SharedHeader";
-		case MEMORY_OWNER_TYPE_Rollover:
-			return "Rollover";
-		case MEMORY_OWNER_TYPE_MemAccount:
-			return "MemAcc";
-		case MEMORY_OWNER_TYPE_Exec_AlienShared:
-			return "X_Alien";
-
-		/* Short living accounts */
-		case MEMORY_OWNER_TYPE_Top:
-			return "Top";
-		case MEMORY_OWNER_TYPE_MainEntry:
-			return "Main";
-		case MEMORY_OWNER_TYPE_Parser:
-			return "Parser";
-		case MEMORY_OWNER_TYPE_Planner:
-			return "Planner";
-		case MEMORY_OWNER_TYPE_Optimizer:
-			return "Optimizer";
-		case MEMORY_OWNER_TYPE_Dispatcher:
-			return "Dispatcher";
-		case MEMORY_OWNER_TYPE_Serializer:
-			return "Serializer";
-		case MEMORY_OWNER_TYPE_Deserializer:
-			return "Deserializer";
-
-		case MEMORY_OWNER_TYPE_EXECUTOR:
-			return "Executor";
-		case MEMORY_OWNER_TYPE_Exec_Result:
-			return "X_Result";
-		case MEMORY_OWNER_TYPE_Exec_Append:
-			return "X_Append";
-		case MEMORY_OWNER_TYPE_Exec_Sequence:
-			return "X_Sequence";
-		case MEMORY_OWNER_TYPE_Exec_BitmapAnd:
-			return "X_BitmapAnd";
-		case MEMORY_OWNER_TYPE_Exec_BitmapOr:
-			return "X_BitmapOr";
-		case MEMORY_OWNER_TYPE_Exec_SeqScan:
-			return "X_SeqScan";
-		case MEMORY_OWNER_TYPE_Exec_ExternalScan:
-			return "X_ExternalScan";
-		case MEMORY_OWNER_TYPE_Exec_AppendOnlyScan:
-			return "X_AppendOnlyScan";
-		case MEMORY_OWNER_TYPE_Exec_AOCSScan:
-			return "X_AOCSCAN";
-		case MEMORY_OWNER_TYPE_Exec_TableScan:
-			return "X_TableScan";
-		case MEMORY_OWNER_TYPE_Exec_DynamicTableScan:
-			return "X_DynamicTableScan";
-		case MEMORY_OWNER_TYPE_Exec_IndexScan:
-			return "X_IndexScan";
-		case MEMORY_OWNER_TYPE_Exec_DynamicIndexScan:
-			return "X_DynamicIndexScan";
-		case MEMORY_OWNER_TYPE_Exec_BitmapIndexScan:
-			return "X_BitmapIndexScan";
-		case MEMORY_OWNER_TYPE_Exec_BitmapHeapScan:
-			return "X_BitmapHeapScan";
-		case MEMORY_OWNER_TYPE_Exec_BitmapAppendOnlyScan:
-			return "X_BitmapAppendOnlyScan";
-		case MEMORY_OWNER_TYPE_Exec_TidScan:
-			return "X_TidScan";
-		case MEMORY_OWNER_TYPE_Exec_SubqueryScan:
-			return "X_SubqueryScan";
-		case MEMORY_OWNER_TYPE_Exec_FunctionScan:
-			return "X_FunctionScan";
-		case MEMORY_OWNER_TYPE_Exec_TableFunctionScan:
-			return "X_TableFunctionScan";
-		case MEMORY_OWNER_TYPE_Exec_ValuesScan:
-			return "X_ValuesScan";
-		case MEMORY_OWNER_TYPE_Exec_NestLoop:
-			return "X_NestLoop";
-		case MEMORY_OWNER_TYPE_Exec_MergeJoin:
-			return "X_MergeJoin";
-		case MEMORY_OWNER_TYPE_Exec_HashJoin:
-			return "X_HashJoin";
-		case MEMORY_OWNER_TYPE_Exec_Material:
-			return "X_Material";
-		case MEMORY_OWNER_TYPE_Exec_Sort:
-			return "X_Sort";
-		case MEMORY_OWNER_TYPE_Exec_Agg:
-			return "X_Agg";
-		case MEMORY_OWNER_TYPE_Exec_Unique:
-			return "X_Unique";
-		case MEMORY_OWNER_TYPE_Exec_Hash:
-			return "X_Hash";
-		case MEMORY_OWNER_TYPE_Exec_SetOp:
-			return "X_SetOp";
-		case MEMORY_OWNER_TYPE_Exec_Limit:
-			return "X_Limit";
-		case MEMORY_OWNER_TYPE_Exec_Motion:
-			return "X_Motion";
-		case MEMORY_OWNER_TYPE_Exec_ShareInputScan:
-			return "X_ShareInputScan";
-		case MEMORY_OWNER_TYPE_Exec_Window:
-			return "X_Window";
-		case MEMORY_OWNER_TYPE_Exec_Repeat:
-			return "X_Repeat";
-		case MEMORY_OWNER_TYPE_Exec_DML:
-			return "X_DML";
-		case MEMORY_OWNER_TYPE_Exec_SplitUpdate:
-			return "X_SplitUpdate";
-		case MEMORY_OWNER_TYPE_Exec_RowTrigger:
-			return "X_RowTrigger";
-		case MEMORY_OWNER_TYPE_Exec_AssertOp:
-			return "X_AssertOp";
-		case MEMORY_OWNER_TYPE_Exec_BitmapTableScan:
-			return "X_BitmapTableScan";
-		case MEMORY_OWNER_TYPE_Exec_PartitionSelector:
-			return "X_PartitionSelector";
-		default:
-			Assert(false);
-			break;
-	}
-
-	return "Error";
-
-}
-
 /*
  * MemoryAccounting_Serialize
  * 		Serializes the current memory accounting tree into the "buffer"
@@ -487,69 +365,6 @@ MemoryAccounting_Serialize(StringInfoData *buffer)
 	}
 	END_MEMORY_ACCOUNT();
 	return MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount;
-}
-
-/*
- * MemoryAccounting_ToString
- *		Converts a memory account tree rooted at "root" to string using tree
- *		walker and repeated calls of MemoryAccountToString
- *
- * root: The root of the tree (used recursively)
- * str: The output buffer
- * indentation: The indentation of the root
- */
-static void
-MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation)
-{
-	MemoryAccountSerializerCxt cxt;
-	cxt.buffer = str;
-	cxt.memoryAccountCount = 0;
-	cxt.prefix = NULL;
-
-	uint32 totalWalked = 0;
-	MemoryAccountTreeWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
-}
-
-/*
- * MemoryAccounting_ToCSV
- *		Converts a memory account tree rooted at "root" to string using tree
- *		walker and repeated calls of MemoryAccountToCSV
- *
- * root: The root of the tree (used recursively)
- * str: The output buffer
- * prefix: A common prefix for each csv line
- */
-void
-MemoryAccounting_ToCSV(MemoryAccountTree *root, StringInfoData *str, char *prefix)
-{
-	MemoryAccountSerializerCxt cxt;
-	cxt.buffer = str;
-	cxt.memoryAccountCount = 0;
-	cxt.prefix = prefix;
-
-	uint32 totalWalked = 0;
-
-	int64 vmem_reserved = VmemTracker_GetMaxReservedVmemBytes();
-
-	/*
-	 * Add vmem reserved as reported by memprot. We report the vmem reserved in the
-	 * "allocated" and "peak" fields. We set the freed to 0.
-	 */
-	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
-			prefix, MEMORY_STAT_TYPE_VMEM_RESERVED,
-			totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
-			(int64) 0 /* Quota */, vmem_reserved /* Peak */, vmem_reserved /* Allocated */, (int64) 0 /* Freed */);
-
-	/*
-	 * Add peak memory observed from inside memory accounting among all allocations.
-	 */
-	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
-			prefix, MEMORY_STAT_TYPE_MEMORY_ACCOUNTING_PEAK,
-			totalWalked /* Child walk serial */, totalWalked /* Parent walk serial */,
-			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */,
-			MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */);
-
-	MemoryAccountTreeWalkNode(root, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
 }
 
 /*
@@ -621,7 +436,17 @@ MemoryAccounting_SaveToFile(int currentSliceId)
 
 	MemoryAccountTree *tree = ConvertMemoryAccountArrayToTree(&longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Undefined],
 			shortLivingMemoryAccountArray->allAccounts, shortLivingMemoryAccountArray->accountCount);
-	MemoryAccounting_ToCSV(&tree[MEMORY_OWNER_TYPE_LogicalRoot], &memBuf, prefix.data);
+	PsuedoAccountsToCSV(&memBuf, prefix.data);
+
+	MemoryAccountSerializerCxt cxt;
+	cxt.buffer = &memBuf;
+	cxt.memoryAccountCount = 0;
+	cxt.prefix = prefix.data;
+
+	uint32 totalWalked = 0;
+
+	MemoryAccountTreeWalkNode(tree, MemoryAccountToCSV, &cxt, 0, &totalWalked, totalWalked);
+
 	SaveMemoryBufToDisk(&memBuf, prefix.data);
 
 	pfree(prefix.data);
@@ -1058,6 +883,137 @@ MemoryAccountToString(MemoryAccountTree *memoryAccountTreeNode, void *context, u
     return CdbVisit_Walk;
 }
 
+/*
+ * MemoryAccounting_GetOwnerName
+ *		Returns the human readable name of an owner
+ */
+static const char*
+MemoryAccounting_GetOwnerName(MemoryOwnerType ownerType)
+{
+	switch (ownerType)
+	{
+		/* Long living accounts */
+		case MEMORY_OWNER_TYPE_LogicalRoot:
+			return "Root";
+		case MEMORY_OWNER_TYPE_SharedChunkHeader:
+			return "SharedHeader";
+		case MEMORY_OWNER_TYPE_Rollover:
+			return "Rollover";
+		case MEMORY_OWNER_TYPE_MemAccount:
+			return "MemAcc";
+		case MEMORY_OWNER_TYPE_Exec_AlienShared:
+			return "X_Alien";
+
+		/* Short living accounts */
+		case MEMORY_OWNER_TYPE_Top:
+			return "Top";
+		case MEMORY_OWNER_TYPE_MainEntry:
+			return "Main";
+		case MEMORY_OWNER_TYPE_Parser:
+			return "Parser";
+		case MEMORY_OWNER_TYPE_Planner:
+			return "Planner";
+		case MEMORY_OWNER_TYPE_Optimizer:
+			return "Optimizer";
+		case MEMORY_OWNER_TYPE_Dispatcher:
+			return "Dispatcher";
+		case MEMORY_OWNER_TYPE_Serializer:
+			return "Serializer";
+		case MEMORY_OWNER_TYPE_Deserializer:
+			return "Deserializer";
+
+		case MEMORY_OWNER_TYPE_EXECUTOR:
+			return "Executor";
+		case MEMORY_OWNER_TYPE_Exec_Result:
+			return "X_Result";
+		case MEMORY_OWNER_TYPE_Exec_Append:
+			return "X_Append";
+		case MEMORY_OWNER_TYPE_Exec_Sequence:
+			return "X_Sequence";
+		case MEMORY_OWNER_TYPE_Exec_BitmapAnd:
+			return "X_BitmapAnd";
+		case MEMORY_OWNER_TYPE_Exec_BitmapOr:
+			return "X_BitmapOr";
+		case MEMORY_OWNER_TYPE_Exec_SeqScan:
+			return "X_SeqScan";
+		case MEMORY_OWNER_TYPE_Exec_ExternalScan:
+			return "X_ExternalScan";
+		case MEMORY_OWNER_TYPE_Exec_AppendOnlyScan:
+			return "X_AppendOnlyScan";
+		case MEMORY_OWNER_TYPE_Exec_AOCSScan:
+			return "X_AOCSCAN";
+		case MEMORY_OWNER_TYPE_Exec_TableScan:
+			return "X_TableScan";
+		case MEMORY_OWNER_TYPE_Exec_DynamicTableScan:
+			return "X_DynamicTableScan";
+		case MEMORY_OWNER_TYPE_Exec_IndexScan:
+			return "X_IndexScan";
+		case MEMORY_OWNER_TYPE_Exec_DynamicIndexScan:
+			return "X_DynamicIndexScan";
+		case MEMORY_OWNER_TYPE_Exec_BitmapIndexScan:
+			return "X_BitmapIndexScan";
+		case MEMORY_OWNER_TYPE_Exec_BitmapHeapScan:
+			return "X_BitmapHeapScan";
+		case MEMORY_OWNER_TYPE_Exec_BitmapAppendOnlyScan:
+			return "X_BitmapAppendOnlyScan";
+		case MEMORY_OWNER_TYPE_Exec_TidScan:
+			return "X_TidScan";
+		case MEMORY_OWNER_TYPE_Exec_SubqueryScan:
+			return "X_SubqueryScan";
+		case MEMORY_OWNER_TYPE_Exec_FunctionScan:
+			return "X_FunctionScan";
+		case MEMORY_OWNER_TYPE_Exec_TableFunctionScan:
+			return "X_TableFunctionScan";
+		case MEMORY_OWNER_TYPE_Exec_ValuesScan:
+			return "X_ValuesScan";
+		case MEMORY_OWNER_TYPE_Exec_NestLoop:
+			return "X_NestLoop";
+		case MEMORY_OWNER_TYPE_Exec_MergeJoin:
+			return "X_MergeJoin";
+		case MEMORY_OWNER_TYPE_Exec_HashJoin:
+			return "X_HashJoin";
+		case MEMORY_OWNER_TYPE_Exec_Material:
+			return "X_Material";
+		case MEMORY_OWNER_TYPE_Exec_Sort:
+			return "X_Sort";
+		case MEMORY_OWNER_TYPE_Exec_Agg:
+			return "X_Agg";
+		case MEMORY_OWNER_TYPE_Exec_Unique:
+			return "X_Unique";
+		case MEMORY_OWNER_TYPE_Exec_Hash:
+			return "X_Hash";
+		case MEMORY_OWNER_TYPE_Exec_SetOp:
+			return "X_SetOp";
+		case MEMORY_OWNER_TYPE_Exec_Limit:
+			return "X_Limit";
+		case MEMORY_OWNER_TYPE_Exec_Motion:
+			return "X_Motion";
+		case MEMORY_OWNER_TYPE_Exec_ShareInputScan:
+			return "X_ShareInputScan";
+		case MEMORY_OWNER_TYPE_Exec_Window:
+			return "X_Window";
+		case MEMORY_OWNER_TYPE_Exec_Repeat:
+			return "X_Repeat";
+		case MEMORY_OWNER_TYPE_Exec_DML:
+			return "X_DML";
+		case MEMORY_OWNER_TYPE_Exec_SplitUpdate:
+			return "X_SplitUpdate";
+		case MEMORY_OWNER_TYPE_Exec_RowTrigger:
+			return "X_RowTrigger";
+		case MEMORY_OWNER_TYPE_Exec_AssertOp:
+			return "X_AssertOp";
+		case MEMORY_OWNER_TYPE_Exec_BitmapTableScan:
+			return "X_BitmapTableScan";
+		case MEMORY_OWNER_TYPE_Exec_PartitionSelector:
+			return "X_PartitionSelector";
+		default:
+			Assert(false);
+			break;
+	}
+
+	return "Error";
+}
+
 /**
  * MemoryAccountToCSV:
  * 		A visitor function that formats a memory account node information in CSV
@@ -1096,6 +1052,38 @@ MemoryAccountToCSV(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
     return CdbVisit_Walk;
 }
 
+/*
+ * PsuedoAccountsToCSV
+ *		Formats pseudo accounts such as vmem reserved and overall peak to CSV
+ *
+ * root: The root of the tree (used recursively)
+ * str: The output buffer
+ * prefix: A common prefix for each csv line
+ */
+static void
+PsuedoAccountsToCSV(StringInfoData *str, char *prefix)
+{
+	int64 vmem_reserved = VmemTracker_GetMaxReservedVmemBytes();
+
+	/*
+	 * Add vmem reserved as reported by memprot. We report the vmem reserved in the
+	 * "allocated" and "peak" fields. We set the freed to 0.
+	 */
+	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
+			prefix, MEMORY_STAT_TYPE_VMEM_RESERVED,
+			0 /* Child walk serial */, 0 /* Parent walk serial */,
+			(int64) 0 /* Quota */, vmem_reserved /* Peak */, vmem_reserved /* Allocated */, (int64) 0 /* Freed */);
+
+	/*
+	 * Add peak memory observed from inside memory accounting among all allocations.
+	 */
+	appendStringInfo(str, "%s,%d,%u,%u," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "," UINT64_FORMAT "\n",
+			prefix, MEMORY_STAT_TYPE_MEMORY_ACCOUNTING_PEAK,
+			0 /* Child walk serial */, 0 /* Parent walk serial */,
+			(int64) 0 /* Quota */, MemoryAccountingPeakBalance /* Peak */,
+			MemoryAccountingPeakBalance /* Allocated */, (int64) 0 /* Freed */);
+}
+
 /**
  * MemoryAccountToLog:
  * 		A visitor function that writes a memory account node information in the log.
@@ -1126,6 +1114,27 @@ MemoryAccountToLog(MemoryAccountTree *memoryAccountTreeNode, void *context, uint
     memAccountCxt->memoryAccountCount++;
 
     return CdbVisit_Walk;
+}
+
+/*
+ * MemoryAccounting_ToString
+ *		Converts a memory account tree rooted at "root" to string using tree
+ *		walker and repeated calls of MemoryAccountToString
+ *
+ * root: The root of the tree (used recursively)
+ * str: The output buffer
+ * indentation: The indentation of the root
+ */
+static void
+MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 indentation)
+{
+	MemoryAccountSerializerCxt cxt;
+	cxt.buffer = str;
+	cxt.memoryAccountCount = 0;
+	cxt.prefix = NULL;
+
+	uint32 totalWalked = 0;
+	MemoryAccountTreeWalkNode(root, MemoryAccountToString, &cxt, 0 + indentation, &totalWalked, totalWalked);
 }
 
 /*
@@ -1288,6 +1297,16 @@ AdvanceMemoryAccountingGeneration()
 	liveAccountStartId = nextAccountId;
 
 	Assert(RolloverMemoryAccount->peak >= MemoryAccountingPeakBalance);
+}
+
+/*
+ * MemoryAccounting_ResetPeakBalance
+ *		Resets the peak memory account balance by setting it to the current balance.
+ */
+static void
+MemoryAccounting_ResetPeakBalance()
+{
+	MemoryAccountingPeakBalance = MemoryAccountingOutstandingBalance;
 }
 
 /*
