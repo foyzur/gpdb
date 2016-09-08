@@ -57,7 +57,8 @@ typedef struct MemoryAccountTree {
  * Note: only short-living accounts are tested with "liveness". Long living accounts
  * have fixed Ids that run between MEMORY_OWNER_TYPE_START_LONG_LIVING and
  * MEMORY_OWNER_TYPE_END_LONG_LIVING and these Ids are smaller than liveAccountStartId
- * but are still considered live for the duration of a session.
+ * but are still considered live for the duration of a QE, across multiple statements
+ * and transactions.
  */
 MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 /*
@@ -149,7 +150,7 @@ MemoryAccount *MemoryAccountMemoryAccount = NULL;
 // Array of accounts available
 MemoryAccountArray* shortLivingMemoryAccountArray = NULL;
 /*
- * Long living accounts live during the entire session across all the statements
+ * Long living accounts live during the entire lifespan of a QE across all the statements
  * and have fixed Ids that run between MEMORY_OWNER_TYPE_START_LONG_LIVING
  * and MEMORY_OWNER_TYPE_END_LONG_LIVING. They are also singleton per-owner. So,
  * only one account exist per-owner type.
@@ -494,8 +495,38 @@ MemoryAccounting_SaveToLog()
 /*****************************************************************************
  *	  PRIVATE ROUTINES FOR MEMORY ACCOUNTING								 *
  *****************************************************************************/
+
+/* Initializes all the long living accounts */
 static void
-InitShortLivingMemoryAccountArray()
+InitLongLivingAccounts() {
+	/*
+	 * All the long living accounts are created together, so if logical root
+	 * is null, then other long-living accounts should be the null too
+	 */
+	Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL && MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
+	Assert(MemoryAccountMemoryContext == NULL);
+	for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot;
+			longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING;
+			longLivingIdx++)
+	{
+		/* For long living account */
+		MemoryAccountIdType newAccountId = MemoryAccounting_CreateAccount(0, longLivingIdx);
+		Assert(longLivingIdx == newAccountId);
+	}
+	/* Now set all the global memory accounts */
+	SharedChunkHeadersMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_SharedChunkHeader];
+	RolloverMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
+	MemoryAccountMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_MemAccount];
+	AlienExecutorMemoryAccount =
+			longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Exec_AlienShared];
+}
+
+/* Initializes all the short living accounts */
+static void
+InitShortLivingMemoryAccounts()
 {
 	Assert(NULL == shortLivingMemoryAccountArray);
 	Assert(NULL != MemoryAccountMemoryContext && MemoryAccountMemoryAccount != NULL);
@@ -512,6 +543,7 @@ InitShortLivingMemoryAccountArray()
 	MemoryContextSwitchTo(oldContext);
 }
 
+/* Add a long living account to the longLivingMemoryAccountArray */
 static void
 AddToLongLivingAccountArray(MemoryAccount *newAccount)
 {
@@ -520,6 +552,7 @@ AddToLongLivingAccountArray(MemoryAccount *newAccount)
 	longLivingMemoryAccountArray[newAccount->id] = newAccount;
 }
 
+/* Add a short living account to the shortLivingMemoryAccountArray */
 static void
 AddToShortLivingAccountArray(MemoryAccount *newAccount)
 {
@@ -1145,40 +1178,35 @@ MemoryAccounting_ToString(MemoryAccountTree *root, StringInfoData *str, uint32 i
 static void
 InitMemoryAccounting()
 {
+	/* Either we never initialized or we are re-initializing after reset and rollover should be the active owner */
 	Assert(ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Undefined || ActiveMemoryAccountId == MEMORY_OWNER_TYPE_Rollover);
 
 	/*
-	 * Order of creation:
+	 * We have long and short living accounts. Long living accounts are created only
+	 * once and they live for the entire duration of a QE. We create all the long living
+	 * accounts first, only if they were never created before.
 	 *
-	 * 1. Root
-	 * 2. SharedChunkHeadersMemoryAccount
-	 * 3. RolloverMemoryAccount
-	 * 4. MemoryAccountMemoryAccount
-	 * 5. MemoryAccountMemoryContext
+	 * The memory accounting framework is a self-auditing framework in terms of memory usage.
+	 * All the accounts are created in MemoryAccountMemoryContext and tracked in a special
+	 * account MemoryAccountMemoryAccount. The MemoryAccountMemoryContext is created only
+	 * once, during the first initialization. Subsequently, this context is reset once per-statement
+	 * to prevent accumulating memory in accounting data structures.
 	 *
-	 * The above 5 survive reset (MemoryAccountMemoryContext
-	 * gets reset, but not deleted).
+	 * As MemoryAccountMemoryContext is reset once per-statement, we don't create the long living
+	 * accounts in that context. Rather the long living accounts are created in TopMemoryContext.
 	 *
-	 * Next set ActiveMemoryAccount = MemoryAccountMemoryAccount
+	 * Once the long living accounts are created we set the MemoryAccountMemoryAccount
+	 * as the ActiveMemoryAccount and proceed with the creation of short living accounts.
 	 *
-	 * Note, don't set MemoryAccountMemoryAccount before creating
-	 * MemoryAccuontMemoryContext, as that will put the balance
-	 * of MemoryAccountMemoryContext in the MemoryAccountMemoryAccount,
-	 * preventing it from going to 0, upon reset of MemoryAccountMemoryContext.
-	 * MemoryAccountMemoryAccount should only contain balance from actual
-	 * account creation, not the overhead of the context.
-	 *
-	 * Once the long living accounts are done and MemoryAccountMemoryAccount
-	 * is the ActiveMemoryAccount, we proceed to create TopMemoryAccount
-	 *
-	 * This ensures the following:
+	 * This process ensures the following:
 	 *
 	 * 1. Accounting is triggered only if the ActiveMemoryAccount is non-null
 	 *
 	 * 2. If the ActiveMemoryAccount is non-null, we are guaranteed to have
-	 * SharedChunkHeadersMemoryAccount, so that we can account shared chunk headers
+	 * SharedChunkHeadersMemoryAccount (which is a long living account), so that we can account
+	 * shared chunk headers.
 	 *
-	 * 3. All short-living accounts (including Top) are accounted in MemoryAccountMemoryAccount
+	 * 3. All short-living accounts are accounted in MemoryAccountMemoryAccount
 	 *
 	 * 4. All short-living accounts are allocated in MemoryAccountMemoryContext
 	 *
@@ -1194,24 +1222,12 @@ InitMemoryAccounting()
 		 * All the long living accounts are created together, so if logical root
 		 * is null, then other long-living accounts should be the null too
 		 */
-		Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL &&
-				MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
+		InitLongLivingAccounts();
 
-		Assert(MemoryAccountMemoryContext == NULL);
-		for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot; longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING; longLivingIdx++)
-		{
-			/* For long living account */
-			MemoryAccountIdType newAccountId = MemoryAccounting_CreateAccount(0, longLivingIdx);
-			Assert(longLivingIdx == newAccountId);
-		}
-
-		/* Now set all the global memory accounts */
-		SharedChunkHeadersMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_SharedChunkHeader];
-		RolloverMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
-		MemoryAccountMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_MemAccount];
-		AlienExecutorMemoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Exec_AlienShared];
-
-		/* Now initiate the memory accounting system. */
+		/*
+		 * Now create the context that contains all short-living accounts to ensure timely
+		 * free of all the short-living account memory.
+		 */
 		MemoryAccountMemoryContext = AllocSetContextCreate(TopMemoryContext,
 											 "MemoryAccountMemoryContext",
 											 ALLOCSET_DEFAULT_MINSIZE,
@@ -1233,19 +1249,13 @@ InitMemoryAccounting()
 				AlienExecutorMemoryAccount->parentId == MEMORY_OWNER_TYPE_LogicalRoot);
 	}
 
-	/*
-	 * Temporarily active MemoryAccountMemoryAccount. Once
-	 * all the setup is done, TopMemoryAccount will become
-	 * the ActiveMemoryAccount
-	 */
-	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_MemAccount;
-
-	InitShortLivingMemoryAccountArray();
+	InitShortLivingMemoryAccounts();
 
 	/* For AlienExecutorMemoryAccount we need TopMemoryAccount as parent */
 	ActiveMemoryAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Top);
 }
 
+/* Clear out all the balance of an account */
 static void
 ClearAccount(MemoryAccount* memoryAccount)
 {
@@ -1268,7 +1278,7 @@ AdvanceMemoryAccountingGeneration()
 	 * is the only account to survive this MemoryAccountMemoryContext
 	 * reset.
 	 */
-	ActiveMemoryAccountId = MEMORY_OWNER_TYPE_Rollover;
+	MemoryAccounting_SwitchAccount((MemoryAccountIdType)MEMORY_OWNER_TYPE_Rollover);
 	MemoryContextReset(MemoryAccountMemoryContext);
 	Assert(MemoryAccountMemoryAccount->allocated == MemoryAccountMemoryAccount->freed);
 	shortLivingMemoryAccountArray = NULL;
