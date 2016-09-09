@@ -702,11 +702,13 @@ CheckMemoryAccountingLeak()
 }
 
 /*
- * Returns a combined array index where the first MEMORY_OWNER_TYPE_END_LONG_LIVING indices
- * are saved for long living accounts and short living account indices follow after that
+ * Returns a combined array index where the long and short living accounts are together.
+ * The first MEMORY_OWNER_TYPE_END_LONG_LIVING number of indices are reserved for long
+ * living accounts and short living accounts follow after that.
  */
 static MemoryAccountIdType
-ConvertIdToUniversalArrayIndex(MemoryAccountIdType id, MemoryAccountIdType liveStartId, MemoryAccountIdType shortLivingCount)
+ConvertIdToUniversalArrayIndex(MemoryAccountIdType id, MemoryAccountIdType liveStartId,
+		MemoryAccountIdType shortLivingCount)
 {
 	if (id >= MEMORY_OWNER_TYPE_LogicalRoot && id <= MEMORY_OWNER_TYPE_END_LONG_LIVING)
 	{
@@ -719,9 +721,10 @@ ConvertIdToUniversalArrayIndex(MemoryAccountIdType id, MemoryAccountIdType liveS
 	else
 	{
 		/* Note, we cannot map ID to rollover here as we expect a live account id */
-		Assert(!"Cannot map id to array index");
+		elog(ERROR, "Cannot map id to array index");
 	}
 
+	/* Keep the compiler happy */
 	return MEMORY_OWNER_TYPE_Undefined;
 }
 
