@@ -109,6 +109,7 @@ test__MemoryAccounting_Allocate__ChargesOnlyActiveAccount(void **state)
 	 * Any change of outstanding balance is coming from new allocation
 	 * and the associated shared header allocation
 	 */
+	assert_true(MemoryAccountingOutstandingBalance - prevOutstanding > 0);
 	assert_true((newActiveAccount->allocated - newActiveAccount->freed) +
 			(SharedChunkHeadersMemoryAccount->allocated - prevSharedHeaderAlloc) ==
 					(MemoryAccountingOutstandingBalance - prevOutstanding));
