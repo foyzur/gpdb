@@ -20,11 +20,15 @@
 					((StandardChunkHeader *)(((char *)(ptr)) - ALLOC_CHUNKHDRSZ))
 
 static StringInfoData outputBuffer;
+int elevel;
 
+static void elog_mock(int elevel, const char *fmt,...);
 static void write_stderr_mock(const char *fmt,...);
 
 /* We will capture write_stderr output using write_stderr_mock */
 #define write_stderr write_stderr_mock
+
+#define elog elog_mock
 
 /* We will capture fwrite output using fwrite_mock */
 #undef fwrite
@@ -55,12 +59,32 @@ void write_stderr_mock(const char *fmt,...);
 	expect_any(ExceptionalCondition,lineNumber); \
     will_be_called_with_sideeffect(ExceptionalCondition, &_ExceptionalCondition, NULL);\
 
+static void
+elog_mock(int passed_elevel, const char *fmt, ...)
+{
+    va_list		ap;
+
+    fmt = _(fmt);
+
+    va_start(ap, fmt);
+
+	char		buf[2048];
+
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+
+	appendStringInfo(&outputBuffer, buf);
+
+	elevel = passed_elevel;
+
+	va_end(ap);
+}
+
 /*
  * Mocks the function write_stderr and captures the output in
  * the global outputBuffer
  */
 static void
-write_stderr_mock(const char *fmt,...)
+write_stderr_mock(const char *fmt, ...)
 {
     va_list		ap;
 
@@ -110,6 +134,8 @@ void SetupMemoryDataStructures(void **state)
 	MemoryContextInit();
 
 	initStringInfoOfSize(&outputBuffer, MAX_OUTPUT_BUFFER_SIZE);
+
+	elevel = INT_MAX;
 }
 
 /*
@@ -600,6 +626,27 @@ test__MemoryAccounting_Reset__TransferRemainingToRollover(void **state)
 }
 
 /*
+ * Tests if the MemoryAccounting_GetAccountCurrentBalance() returns the current
+ * balance of an account
+ */
+void
+test__MemoryAccounting_GetAccountCurrentBalance__ResetPeakBalance(void **state)
+{
+	MemoryAccountIdType newAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_Hash);
+	MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount(newAccountId);
+
+	/* Tiny alloc that requires a new SharedChunkHeader, due to a new ActiveMemoryAccount */
+	assert_true(MemoryAccounting_GetAccountCurrentBalance(newAccountId) == 0);
+	void *testAlloc = palloc(sizeof(int));
+	MemoryAccount *memoryAccount = MemoryAccounting_ConvertIdToAccount(newAccountId);
+	assert_true(MemoryAccounting_GetAccountCurrentBalance(newAccountId) == memoryAccount->allocated - memoryAccount->freed);
+
+	pfree(testAlloc);
+	assert_true(MemoryAccounting_GetAccountCurrentBalance(newAccountId) == 0);
+	MemoryAccounting_SwitchAccount(oldAccountId);
+}
+
+/*
  * Tests if the MemoryAccounting_Reset() resets the high water
  * mark (i.e., peak balance)
  */
@@ -826,6 +873,59 @@ test__MemoryAccounting_Serialize__Validate(void **state)
 }
 
 
+/*
+ * Tests if the MemoryAccounting_CombinedAccountArrayToString of the memory accounting tree
+ *  produces expected output
+ */
+void
+test__MemoryAccounting_CombinedAccountArrayToString__Validate(void **state)
+{
+	StringInfoData serializedBytes;
+	initStringInfoOfSize(&serializedBytes, MAX_OUTPUT_BUFFER_SIZE);
+
+	MemoryAccount *topAccount = MemoryAccounting_ConvertIdToAccount(liveAccountStartId);
+
+	MemoryAccountIdType newAccount1 = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, liveAccountStartId /* Top */);
+	MemoryAccountIdType newAccount2 = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_SeqScan, newAccount1);
+	MemoryAccountIdType newAccount3 = CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Sort, newAccount1);
+
+	StringInfoData str;
+	initStringInfoOfSize(&str, MAX_OUTPUT_BUFFER_SIZE);
+
+	size_t oldTopBalance = topAccount->allocated - topAccount->freed;
+	size_t oldTopPeak = topAccount->peak;
+
+	uint32 totalSerialized = MemoryAccounting_Serialize(&serializedBytes);
+
+	char *templateString = "Root: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  Top: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: 0bytes.\n\
+    X_Hash: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+      X_Sort: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+      X_SeqScan: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  X_Alien: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  MemAcc: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: 0bytes.\n\
+  Rollover: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  SharedHeader: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: 0bytes.\n";
+
+	char		buf[MAX_OUTPUT_BUFFER_SIZE];
+
+	snprintf(buf, sizeof(buf), templateString,
+			topAccount->peak, topAccount->allocated - topAccount->freed,
+			MemoryAccountMemoryAccount->peak, MemoryAccountMemoryAccount->allocated - MemoryAccountMemoryAccount->freed,
+			SharedChunkHeadersMemoryAccount->peak, SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed);
+
+	MemoryAccounting_CombinedAccountArrayToString(serializedBytes.data, totalSerialized, &str, 0);
+
+	size_t newTopBalance = topAccount->allocated - topAccount->freed;
+	size_t newTopPeak = topAccount->peak;
+
+    assert_true(strcmp(str.data, buf) == 0);
+
+    pfree(serializedBytes.data);
+	pfree(str.data);
+}
+
+
 /* Tests if the MemoryOwnerType enum to string conversion is working */
 void
 test__MemoryAccounting_GetAccountName__Validate(void **state)
@@ -863,6 +963,21 @@ test__MemoryAccounting_GetAccountName__Validate(void **state)
 	}
 }
 
+/* Tests if the MemoryAccounting_SizeOfAccountInBytes returns correct size */
+void
+test__MemoryAccounting_SizeOfAccountInBytes__Validate(void **state)
+{
+	size_t accountSize = MemoryAccounting_SizeOfAccountInBytes();
+	assert_true(accountSize == sizeof(MemoryAccount));
+}
+
+/* Tests if the MemoryAccounting_GetGlobalPeak returns correct global peak balance */
+void
+test__MemoryAccounting_GetGlobalPeak__Validate(void **state)
+{
+	uint64 peak = MemoryAccounting_GetGlobalPeak();
+	assert_true(peak == MemoryAccountingPeakBalance);
+}
 
 /* Tests if the MemoryAccounting_GetAccountPeakBalance is returning the correct peak balance */
 void
@@ -1025,6 +1140,60 @@ memory: SharedHeader, 6, 0, 0, %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 
 }
 
 /*
+ * Tests if the MemoryAccounting_PrettyPrint is generating the correct
+ * string representation of the memory accounting tree before printing.
+ */
+void
+test__MemoryAccounting_PrettyPrint__GeneratesCorrectString(void **state)
+{
+
+	char *templateString = "Root: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  Top: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: 0bytes.\n\
+    X_Hash: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: 0bytes.\n\
+  X_Alien: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  MemAcc: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: 0bytes.\n\
+  Rollover: Peak/Cur 0/0bytes. Quota: 0bytes.\n\
+  SharedHeader: Peak/Cur " UINT64_FORMAT "/" UINT64_FORMAT "bytes. Quota: 0bytes.\n\n";
+
+	/* ActiveMemoryAccount should be Top at this point */
+	MemoryAccount *newAccount = MemoryAccounting_ConvertIdToAccount(
+			CreateMemoryAccountImpl(0, MEMORY_OWNER_TYPE_Exec_Hash, ActiveMemoryAccountId));
+	MemoryAccount *topAccount = MemoryAccounting_ConvertIdToAccount(liveAccountStartId);
+
+	void * dummy1 = palloc(NEW_ALLOC_SIZE);
+
+	MemoryAccountIdType oldAccountId = MemoryAccounting_SwitchAccount(newAccount->id);
+
+	void * dummy2 = palloc(NEW_ALLOC_SIZE);
+	void * dummy3 = palloc(NEW_ALLOC_SIZE);
+	MemoryAccounting_SwitchAccount(oldAccountId);
+
+	/* Now free in Hash account, although Hash is no longer Active */
+	pfree(dummy3);
+
+	MemoryAccounting_PrettyPrint();
+
+	char		buf[MAX_OUTPUT_BUFFER_SIZE];
+	/* Hack to discount "tree" free in MemoryAccounting_SaveToLog which we did not count when walked the tree */
+	uint64 hackedFreed = topAccount->freed;
+	topAccount->freed = 0;
+	snprintf(buf, sizeof(buf), templateString,
+			topAccount->peak, topAccount->allocated - topAccount->freed,
+			newAccount->peak, newAccount->allocated - newAccount->freed,
+			MemoryAccountMemoryAccount->peak, MemoryAccountMemoryAccount->allocated - MemoryAccountMemoryAccount->freed,
+			SharedChunkHeadersMemoryAccount->peak, SharedChunkHeadersMemoryAccount->allocated - SharedChunkHeadersMemoryAccount->freed);
+
+	/* Restore hacked counters */
+	topAccount->freed = hackedFreed;
+
+    assert_true(strcmp(outputBuffer.data, buf) == 0);
+
+	pfree(dummy1);
+	pfree(dummy2);
+    pfree(newAccount);
+}
+
+/*
  * Tests if the MemoryAccounting_SaveToFile is generating the correct
  * string representation of memory accounting tree.
  *
@@ -1159,6 +1328,30 @@ test__MemoryAccounting_SaveToFile__GeneratesCorrectString(void **state)
     pfree(newAccount);
 }
 
+/*
+ * Tests if we correctly convert the short and long living indexes to a combined
+ * array index
+ */
+void
+test__ConvertIdToUniversalArrayIndex__Validate(void **state)
+{
+	// For long living number of short living accounts don't matter to resolve to a compact index
+	assert_true(ConvertIdToUniversalArrayIndex(MEMORY_OWNER_TYPE_MemAccount, MEMORY_OWNER_TYPE_START_SHORT_LIVING,
+			1) == MEMORY_OWNER_TYPE_MemAccount);
+
+	assert_true(ConvertIdToUniversalArrayIndex(MEMORY_OWNER_TYPE_MemAccount, MEMORY_OWNER_TYPE_START_SHORT_LIVING + 10,
+			4) == MEMORY_OWNER_TYPE_MemAccount);
+
+	// For gap of 10 we will still resolve to a compact index
+	assert_true(ConvertIdToUniversalArrayIndex(MEMORY_OWNER_TYPE_Top + 10, MEMORY_OWNER_TYPE_START_SHORT_LIVING + 10,
+			3) == MEMORY_OWNER_TYPE_Top);
+
+	// For out of range, we should get an error
+	//will_be_called(errstart);
+	ConvertIdToUniversalArrayIndex(100, MEMORY_OWNER_TYPE_START_SHORT_LIVING + 10, 3);
+	assert_true(elevel == ERROR && strcmp(outputBuffer.data, "Cannot map id to array index") == 0);
+}
+
 int
 main(int argc, char* argv[])
 {
@@ -1184,11 +1377,17 @@ main(int argc, char* argv[])
 		unit_test_setup_teardown(test__MemoryContextReset__ResetsSharedChunkHeadersMemoryAccountBalance, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_Serialize__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_GetAccountName__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
+		unit_test_setup_teardown(test__MemoryAccounting_SizeOfAccountInBytes__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
+		unit_test_setup_teardown(test__MemoryAccounting_GetGlobalPeak__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_GetAccountPeakBalance__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_GetBalance__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_ToString__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_SaveToLog__GeneratesCorrectString, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 		unit_test_setup_teardown(test__MemoryAccounting_SaveToFile__GeneratesCorrectString, SetupMemoryDataStructures, TeardownMemoryDataStructures),
+		unit_test_setup_teardown(test__MemoryAccounting_PrettyPrint__GeneratesCorrectString, SetupMemoryDataStructures, TeardownMemoryDataStructures),
+		unit_test_setup_teardown(test__MemoryAccounting_CombinedAccountArrayToString__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
+		unit_test_setup_teardown(test__ConvertIdToUniversalArrayIndex__Validate, SetupMemoryDataStructures, TeardownMemoryDataStructures),
+		unit_test_setup_teardown(test__MemoryAccounting_GetAccountCurrentBalance__ResetPeakBalance, SetupMemoryDataStructures, TeardownMemoryDataStructures),
 	};
 
 	return run_tests(tests);
