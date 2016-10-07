@@ -25,17 +25,10 @@ struct MemoryContextData;
 #define EXPLAIN_MEMORY_VERBOSITY_SUMMARY  1 /* Summary of memory usage for each owner in explain analyze */
 #define EXPLAIN_MEMORY_VERBOSITY_DETAIL  2 /* Detail memory accounting tree for each slice in explain analyze */
 
-#define LEAK_DETECTION_LEVEL_DISABLE  0
-#define LEAK_DETECTION_LEVEL_LAST  1
-#define LEAK_DETECTION_LEVEL_ALL  2
-
 /*
  * What level of details of the memory accounting information to show during EXPLAIN ANALYZE?
  */
 extern int explain_memory_verbosity;
-
-extern int leak_detection_level;
-extern int leak_detection_ignore;
 
 /*
  * Unique run id for memory profiling. May be just a start timestamp for a batch of queries such as TPCH
