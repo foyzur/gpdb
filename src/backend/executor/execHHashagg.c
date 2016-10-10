@@ -668,6 +668,9 @@ static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
 HashAggTable *
 create_agg_hash_table(AggState *aggstate)
 {
+	instr_time	total_starttime, total_endtime;
+	INSTR_TIME_SET_CURRENT(total_starttime);
+
 	HashAggTable *hashtable;
 	Agg *agg = (Agg *)aggstate->ss.ps.plan;
 	MemoryContext oldcxt;
@@ -699,8 +702,21 @@ create_agg_hash_table(AggState *aggstate)
 	/* Initialize the hash buckets */
 	hashtable->nbuckets = hashtable->hats.nbuckets;
 	hashtable->total_buckets = hashtable->nbuckets;
+
+	instr_time	starttime, endtime;
+
+	INSTR_TIME_SET_CURRENT(starttime);
 	hashtable->buckets = (HashAggEntry **)palloc0(hashtable->nbuckets * sizeof(HashAggEntry *));
+	INSTR_TIME_SET_CURRENT(endtime);
+	INSTR_TIME_SUBTRACT(endtime, starttime);
+	elog(WARNING, "Bucket Alloc (#Bucket, time): %ld, %ld, %.3f ms", hashtable->nbuckets, hashtable->nbuckets * sizeof(HashAggEntry *), INSTR_TIME_GET_MILLISEC(endtime));
+
+	INSTR_TIME_SET_CURRENT(starttime);
+
 	hashtable->bloom = (uint64 *)palloc0(hashtable->nbuckets * sizeof(uint64));
+	INSTR_TIME_SET_CURRENT(endtime);
+	INSTR_TIME_SUBTRACT(endtime, starttime);
+	elog(WARNING, "Bloom Alloc: %ld, %.3f ms", hashtable->nbuckets * sizeof(uint64), INSTR_TIME_GET_MILLISEC(endtime));
 
 	MemoryContextSwitchTo(hashtable->entry_cxt);
 	
@@ -731,6 +747,10 @@ create_agg_hash_table(AggState *aggstate)
 	MemSet(padding_dummy, 0, MAXIMUM_ALIGNOF);
 	
 	init_agg_hash_iter(hashtable);
+
+	INSTR_TIME_SET_CURRENT(total_endtime);
+	INSTR_TIME_SUBTRACT(total_endtime, total_starttime);
+	elog(WARNING, "Total time: %.3f ms", INSTR_TIME_GET_MILLISEC(total_endtime));
 
 	return hashtable;
 }
