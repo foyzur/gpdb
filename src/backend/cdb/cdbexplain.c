@@ -735,13 +735,13 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
     const char *originalSerializedMemoryAccountingStartAddress = ((const char*) hdr) +
     		hdr->memAccountStartOffset;
 
-    size_t bitCount = MemoryAccounting_SizeOfAccountInBytes() * hdr->memAccountCount;
+    size_t byteCount = MemoryAccounting_SizeOfAccountInBytes() * hdr->memAccountCount;
     /*
      * We need to copy of the serialized bits. These bits have shorter lifespan
      * and can get out of scope before we finish explain analyze.
      */
-    void *copiedSerializedMemoryAccountingStartAddress = palloc(bitCount);
-    memcpy(copiedSerializedMemoryAccountingStartAddress, originalSerializedMemoryAccountingStartAddress, bitCount);
+    void *copiedSerializedMemoryAccountingStartAddress = palloc(byteCount);
+    memcpy(copiedSerializedMemoryAccountingStartAddress, originalSerializedMemoryAccountingStartAddress, byteCount);
 
     ss->memoryAccounts[iworker] = copiedSerializedMemoryAccountingStartAddress;
     ss->memoryAccountCount[iworker] = hdr->memAccountCount;

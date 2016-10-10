@@ -43,6 +43,7 @@ typedef struct MemoryAccountArray{
 } MemoryAccountArray;
 
 extern MemoryAccountArray* shortLivingMemoryAccountArray;
+/* We save index 0 for undefined null account. Therefore, we need an extra entry */
 extern MemoryAccount* longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_END_LONG_LIVING + 1];
 
 extern MemoryAccount *SharedChunkHeadersMemoryAccount;
@@ -50,15 +51,28 @@ extern MemoryAccount *SharedChunkHeadersMemoryAccount;
 extern uint64 MemoryAccountingOutstandingBalance;
 extern uint64 MemoryAccountingPeakBalance;
 
+/*
+ * MemoryAccounting_IsLiveAccount
+ *    Checks if an account is live.
+ *
+ * id: the id of the account
+ */
 static inline bool
-MemoryAccounting_IsValidAccount(MemoryAccountIdType id)
+MemoryAccounting_IsLiveAccount(MemoryAccountIdType id)
 {
 	AssertImply(NULL == shortLivingMemoryAccountArray, liveAccountStartId == nextAccountId);
-	return ((id >= liveAccountStartId &&
-			id < (liveAccountStartId + (NULL == shortLivingMemoryAccountArray ? 0 : shortLivingMemoryAccountArray->accountCount))) ||
-			((id <= MEMORY_OWNER_TYPE_END_LONG_LIVING) && id > MEMORY_OWNER_TYPE_Undefined));
+	bool isValidShortLivingAccount = (id >= liveAccountStartId &&
+      id < (liveAccountStartId + (NULL == shortLivingMemoryAccountArray ? 0 : shortLivingMemoryAccountArray->accountCount)));
+	return isValidShortLivingAccount ||
+	    ((id <= MEMORY_OWNER_TYPE_END_LONG_LIVING) && (id > MEMORY_OWNER_TYPE_Undefined)) /* Valid long living? */;
 }
 
+/*
+ * MemoryAccounting_ConvertIdToAccount
+ *    Converts an account ID to an account pointer.
+ *
+ * id: the id of the account
+ */
 static inline MemoryAccount*
 MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
 {
@@ -76,9 +90,15 @@ MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
 		/* 0 is reserved as undefined. So, the array index is 1 behind */
 		memoryAccount = longLivingMemoryAccountArray[id];
 	}
-	else if (id < liveAccountStartId)
+	else if (id < liveAccountStartId) /* Dead account; so use rollover */
 	{
 		Assert(NULL != longLivingMemoryAccountArray);
+		/*
+		 * For dead accounts we use a single rollover account to account for all
+		 * the long living allocations. Rollover is a long-living account, so it
+		 * doesn't get recreated and it accounts for all the past allocations that
+		 * outlived their owner accounts.
+		 */
 		memoryAccount = longLivingMemoryAccountArray[MEMORY_OWNER_TYPE_Rollover];
 	}
 
@@ -100,7 +120,7 @@ MemoryAccounting_ConvertIdToAccount(MemoryAccountIdType id)
 static inline bool
 MemoryAccounting_Allocate(MemoryAccountIdType memoryAccountId, Size allocatedSize)
 {
-	Assert(MemoryAccounting_IsValidAccount(memoryAccountId));
+	Assert(MemoryAccounting_IsLiveAccount(memoryAccountId));
 	MemoryAccount* memoryAccount = MemoryAccounting_ConvertIdToAccount(memoryAccountId);
 
 	Assert(memoryAccount->allocated + allocatedSize >=

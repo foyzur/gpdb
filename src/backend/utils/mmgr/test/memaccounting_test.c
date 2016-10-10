@@ -207,7 +207,7 @@ test__CreateMemoryAccountImpl__AccountProperties(void **state)
 			 * Make sure we create account with valid tag, desired
 			 * ownerType and provided quota limit
 			 */
-			assert_true(MemoryAccounting_IsValidAccount(newAccountId));
+			assert_true(MemoryAccounting_IsLiveAccount(newAccountId));
 			assert_true(newAccount->ownerType == curOwnerType);
 			assert_true(newAccount->maxLimit == curLimit);
 			/*
@@ -385,24 +385,24 @@ test__MemoryAccountIsValid__ProperValidation(void **state)
 	/* Bypass the assertion that live is same as next if no short account */
 	nextAccountId = liveAccountStartId;
 
-	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING));
+	assert_true(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING));
 	/*
 	 * If shortLivingMemoryAccountArray is NULL, any ID beyond
 	 * MEMORY_OWNER_TYPE_END_LONG_LIVING will be considered invalid
 	 */
-	assert_false(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING + 1));
+	assert_false(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING + 1));
 
 	/* Restoring shortLivingAccountArray to check for valid accounts */
 	shortLivingMemoryAccountArray = accountArray;
 	nextAccountId = oldNext;
 
-	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_Rollover));
+	assert_true(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_Rollover));
 	/* liveAccountStartId should be the id of Top account */
-	assert_true(MemoryAccounting_IsValidAccount(liveAccountStartId));
-	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount - 1));
+	assert_true(MemoryAccounting_IsLiveAccount(liveAccountStartId));
+	assert_true(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount - 1));
 
 	/* Check for a false return for boundary */
-	assert_false(MemoryAccounting_IsValidAccount(
+	assert_false(MemoryAccounting_IsLiveAccount(
 			MEMORY_OWNER_TYPE_END_LONG_LIVING + shortLivingMemoryAccountArray->accountCount +
 			1 /* Reserved 1 for invalid */));
 }
@@ -437,10 +437,10 @@ test__MemoryAccounting_Reset__ReusesLongLivingAccounts(void **state)
 	MemoryAccounting_Reset();
 
 	/* Make sure we have a valid set of accounts */
-	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_LogicalRoot));
-	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_SharedChunkHeader));
-	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_Rollover));
-	assert_true(MemoryAccounting_IsValidAccount(MEMORY_OWNER_TYPE_MemAccount));
+	assert_true(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_LogicalRoot));
+	assert_true(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_SharedChunkHeader));
+	assert_true(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_Rollover));
+	assert_true(MemoryAccounting_IsLiveAccount(MEMORY_OWNER_TYPE_MemAccount));
 
 	MemoryAccount *root = MemoryAccounting_ConvertIdToAccount(MEMORY_OWNER_TYPE_LogicalRoot);
 	/* MemoryAccountTreeLogicalRoot should be reused (i.e., MemoryAccountTreeLogicalRoot will survive the reset) */
@@ -579,7 +579,7 @@ test__MemoryAccounting_Reset__AdvancesGeneration(void **state)
 	MemoryAccountIdType liveStart = liveAccountStartId;
 
 	MemoryAccountIdType extraShortAccountId = MemoryAccounting_CreateAccount(0, MEMORY_OWNER_TYPE_Exec_Append);
-	MemoryAccounting_IsValidAccount(extraShortAccountId);
+	MemoryAccounting_IsLiveAccount(extraShortAccountId);
 
 	MemoryAccountIdType nextId = nextAccountId;
 	assert_true(liveStart + 1 < nextId);
@@ -589,7 +589,7 @@ test__MemoryAccounting_Reset__AdvancesGeneration(void **state)
 	/* We already created top */
 	assert_true(liveAccountStartId == nextId && liveAccountStartId + 1 == nextAccountId);
 	/* Previous short account is no longer valid */
-	assert_false(MemoryAccounting_IsValidAccount(extraShortAccountId));
+	assert_false(MemoryAccounting_IsLiveAccount(extraShortAccountId));
 }
 
 /*
@@ -814,7 +814,7 @@ ValidateSerializedAccountArray(const char* bytes, uint32 totalSerialized, uint32
 	for (int i = MEMORY_OWNER_TYPE_END_LONG_LIVING; i < totalSerialized; i++)
 	{
 		MemoryAccount serializedAccount = combinedAccountArray[i];
-		assert_true(MemoryAccounting_IsValidAccount(serializedAccount.id));
+		assert_true(MemoryAccounting_IsLiveAccount(serializedAccount.id));
 
 		/* Ensure a set of contiguous account IDs */
 		assert_true(i == MEMORY_OWNER_TYPE_END_LONG_LIVING || prevAccountId == (i - 1));

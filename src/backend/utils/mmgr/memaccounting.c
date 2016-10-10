@@ -505,6 +505,8 @@ InitLongLivingAccounts() {
 	 */
 	Assert(SharedChunkHeadersMemoryAccount == NULL && RolloverMemoryAccount == NULL && MemoryAccountMemoryAccount == NULL && AlienExecutorMemoryAccount == NULL);
 	Assert(MemoryAccountMemoryContext == NULL);
+	/* Ensure we are in TopMemoryContext as we are creating long living accounts that don't die */
+	Assert(CurrentMemoryContext == TopMemoryContext);
 	for (int longLivingIdx = MEMORY_OWNER_TYPE_LogicalRoot;
 			longLivingIdx <= MEMORY_OWNER_TYPE_END_LONG_LIVING;
 			longLivingIdx++)
