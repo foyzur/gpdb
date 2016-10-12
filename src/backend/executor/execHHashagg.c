@@ -110,7 +110,7 @@ static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, void *input_recor
 										   InputRecordType input_type, int32 input_size,
 										   uint32 hashkey, unsigned parent_hash_bit, bool *p_isnew);
 static void agg_hash_table_stat_upd(HashAggTable *ht);
-static void reset_agg_hash_table(AggState *aggstate);
+static void reset_agg_hash_table(AggState *aggstate, bool in_destroyer);
 static bool agg_hash_reload(AggState *aggstate);
 static inline void *mpool_cxt_alloc(void *manager, Size len);
 
@@ -655,6 +655,18 @@ static Size est_hash_tuple_size(TupleTableSlot *hashslot, List *hash_needed)
 	return len;
 }
 
+static void*
+my_alloc(size_t count, size_t size)
+{
+  return calloc(count, size);
+}
+
+static void
+my_free(void *ptr)
+{
+  free(ptr);
+}
+
 /* Function: create_agg_hash_table
  *
  * Creates and initializes a hash table for the given AggState.  Should be
@@ -706,14 +718,28 @@ create_agg_hash_table(AggState *aggstate)
 	instr_time	starttime, endtime;
 
 	INSTR_TIME_SET_CURRENT(starttime);
-	hashtable->buckets = (HashAggEntry **)palloc0(hashtable->nbuckets * sizeof(HashAggEntry *));
+	if (memory_profiler_dataset_size == 11)
+	{
+	  hashtable->buckets = (HashAggEntry **)my_alloc(hashtable->nbuckets, sizeof(HashAggEntry *));
+	}
+	else
+	{
+	  hashtable->buckets = (HashAggEntry **)palloc0(hashtable->nbuckets * sizeof(HashAggEntry *));
+	}
 	INSTR_TIME_SET_CURRENT(endtime);
 	INSTR_TIME_SUBTRACT(endtime, starttime);
 	elog(WARNING, "Bucket Alloc (#Bucket, time): %ld, %ld, %.3f ms", hashtable->nbuckets, hashtable->nbuckets * sizeof(HashAggEntry *), INSTR_TIME_GET_MILLISEC(endtime));
 
 	INSTR_TIME_SET_CURRENT(starttime);
 
-	hashtable->bloom = (uint64 *)palloc0(hashtable->nbuckets * sizeof(uint64));
+	if (memory_profiler_dataset_size == 11)
+	{
+	  hashtable->bloom = (uint64 *)my_alloc(hashtable->nbuckets, sizeof(uint64));
+	}
+	else
+	{
+    hashtable->bloom = (uint64 *)palloc0(hashtable->nbuckets * sizeof(uint64));
+	}
 	INSTR_TIME_SET_CURRENT(endtime);
 	INSTR_TIME_SUBTRACT(endtime, starttime);
 	elog(WARNING, "Bloom Alloc: %ld, %.3f ms", hashtable->nbuckets * sizeof(uint64), INSTR_TIME_GET_MILLISEC(endtime));
@@ -1430,30 +1456,40 @@ agg_hash_iter(AggState *aggstate)
 
 	Assert( hashtable != NULL && hashtable->buckets != NULL && hashtable->nbuckets > 0 );
 
+  if (entry != NULL)
+  {
+    Assert(entry->is_primodial);
+    hashtable->num_output_groups++;
+    hashtable->next_entry = entry->next;
+    entry->next = NULL;
+    return entry;
+  }
+
 	if (hashtable->curr_spill_file != NULL)
 		spill_set = hashtable->curr_spill_file->spill_set;
 	
 	oldcxt = MemoryContextSwitchTo(hashtable->entry_cxt);
 
+	int cur_bucket_idx = hashtable->curr_bucket_idx;
+	int num_buckets = hashtable->nbuckets;
+
 	while (entry == NULL &&
-		   hashtable->nbuckets > ++ hashtable->curr_bucket_idx)
+		   num_buckets > ++ cur_bucket_idx)
 	{
 		entry = hashtable->buckets[hashtable->curr_bucket_idx];
-		if (entry != NULL)
-		{
-			Assert(entry->is_primodial);
-			break;
-		}
-	}
-
-	if (entry != NULL)
-	{
-		hashtable->num_output_groups++;
-		hashtable->next_entry = entry->next;
-		entry->next = NULL;
 	}
 
 	MemoryContextSwitchTo(oldcxt);
+
+	hashtable->curr_bucket_idx = cur_bucket_idx;
+
+  if (entry != NULL)
+  {
+    Assert(entry->is_primodial);
+    hashtable->num_output_groups++;
+    hashtable->next_entry = entry->next;
+    entry->next = NULL;
+  }
 
 	return entry;
 }
@@ -1525,7 +1561,7 @@ agg_hash_stream(AggState *aggstate)
 	elog(HHA_MSG_LVL,
 		"HashAgg: streaming");
 
-	reset_agg_hash_table(aggstate);
+	reset_agg_hash_table(aggstate, false);
 	
 	return agg_hash_initial_pass(aggstate);
 }
@@ -1793,7 +1829,7 @@ agg_hash_next_pass(AggState *aggstate)
 	if (hashtable->spill_set == NULL)
 		return false;
 
-	reset_agg_hash_table(aggstate);
+	reset_agg_hash_table(aggstate, false);
 
 	elog(HHA_MSG_LVL, "HashAgg: outputed " INT64_FORMAT " groups.", hashtable->num_output_groups);
 
@@ -1948,7 +1984,7 @@ agg_hash_next_pass(AggState *aggstate)
  *
  * Clear the hash table content anchored by the bucket array.
  */
-void reset_agg_hash_table(AggState *aggstate)
+void reset_agg_hash_table(AggState *aggstate, bool in_destroyer)
 {
 	HashAggTable *hashtable = aggstate->hhashtable;
 	
@@ -1956,8 +1992,12 @@ void reset_agg_hash_table(AggState *aggstate)
 		"HashAgg: resetting " INT64_FORMAT "-entry hash table",
 		hashtable->num_ht_groups);
 	
-	MemSet(hashtable->buckets, 0, hashtable->nbuckets * sizeof(HashAggEntry*));
-	MemSet(hashtable->bloom, 0, hashtable->nbuckets * sizeof(uint64));
+	if (!in_destroyer)
+	{
+	  MemSet(hashtable->buckets, 0, hashtable->nbuckets * sizeof(HashAggEntry*));
+	  MemSet(hashtable->bloom, 0, hashtable->nbuckets * sizeof(uint64));
+	}
+
 	hashtable->num_ht_groups = 0;
 
 	CdbCellBuf_Reset(&(hashtable->entry_buf));
@@ -1991,12 +2031,24 @@ void destroy_agg_hash_table(AggState *aggstate)
 			"HashAgg: destroying hash table -- ngroup=" INT64_FORMAT " ntuple=" INT64_FORMAT,
 			aggstate->hhashtable->num_ht_groups,
 			aggstate->hhashtable->num_tuples);
-		
-		reset_agg_hash_table(aggstate);
 
-		/* destroy_batches(aggstate->hhashtable); */
-		pfree(aggstate->hhashtable->buckets);
-		pfree(aggstate->hhashtable->bloom);
+		reset_agg_hash_table(aggstate, memory_profiler_dataset_size == 11);
+
+    if (memory_profiler_dataset_size == 11)
+    {
+      /* destroy_batches(aggstate->hhashtable); */
+      my_free(aggstate->hhashtable->buckets);
+      my_free(aggstate->hhashtable->bloom);
+    }
+    else
+    {
+      pfree(aggstate->hhashtable->buckets);
+      pfree(aggstate->hhashtable->bloom);
+    }
+
+    aggstate->hhashtable->buckets = NULL;
+    aggstate->hhashtable->bloom = NULL;
+
 		if (aggstate->hhashtable->hashkey_buf)
 			pfree(aggstate->hhashtable->hashkey_buf);
 
