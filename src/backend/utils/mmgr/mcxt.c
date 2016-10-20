@@ -178,6 +178,40 @@ MemoryContextResetChildren(MemoryContext context)
 }
 
 /*
+ * MemoryContextUpdateSharedHeaders
+ */
+void
+MemoryContextUpdateSharedHeaders(MemoryContext context)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+	/* save a function call in common case where there are no children */
+	if (context->firstchild != NULL)
+		MemoryContextUpdateSharedHeadersOfChildren(context);
+
+	AllocSetUpdateSharedHeaders((AllocSet) context);
+}
+
+/*
+ * MemoryContextUpdateSharedHeadersOfChildren
+ */
+void
+MemoryContextUpdateSharedHeadersOfChildren(MemoryContext context)
+{
+	MemoryContext child;
+
+	AssertArg(MemoryContextIsValid(context));
+
+	for (child = context->firstchild; child != NULL; child = child->nextchild)
+		MemoryContextUpdateSharedHeaders(child);
+}
+
+
+
+
+
+
+/*
  * MemoryContextDelete
  *		Delete a context and its descendants, and release all space
  *		allocated therein.

@@ -975,6 +975,28 @@ AllocSetDelete(MemoryContext context)
 	set->nullAccountHeader = NULL;
 }
 
+void AllocSetUpdateSharedHeaders(AllocSet aset, int offset)
+{
+	SharedChunkHeader *head = aset->sharedHeaderList;
+	while (head != NULL) {
+		if (FromPrevGen(head->memoryAccountId))
+		{
+			head->memoryAccountId = MEMORY_OWNER_TYPE_Rollover;
+		}
+		else if (isLongLiving(head->memoryAccountId))
+		{
+			// Dont' do anything
+		}
+		else
+		{
+			head->memoryAccountId -= offset;
+		}
+		head = head->next;
+	}
+
+
+}
+
 /*
  * AllocSetAllocImpl
  *		Returns pointer to allocated memory of given size; memory is added

@@ -65,7 +65,7 @@ MemoryAccountIdType liveAccountStartId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
  * A monotonically increasing counter to get the next Id at the time of creation of
  * a new short-living account.
  */
-MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+static MemoryAccountIdType nextAccountId = MEMORY_OWNER_TYPE_START_SHORT_LIVING;
 
 /*
  ******************************************************
@@ -613,9 +613,38 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
 	}
 	else
 	{
+		if (nextAccountId == UINT64_MAX)
+		{
+			//liveAccountStartId, nextAccountId
+			HandleOverflow(TopMemoryContext);
+		}
 		newAccount->id = nextAccountId++;
+
 		AddToShortLivingAccountArray(newAccount);
 	}
+}
+
+bool
+FromPrevGen(MemoryAccountIdType id)
+{
+	return id < liveAccountStartId;
+}
+
+static int HandleOverflow(MemoryContext TopMemoryContext) {
+	// 19, 20, 21, 22, 23
+	// 8, 9, 10, 11, 12
+	// 6, 7, 8, 9, 10
+
+	// 19 - 6 => 13
+	// 5 + 1 => 6
+	int numberOfAccounts = nextAccountId - liveAccountStartId; // 19, 24
+	int offset = liveAccountStartId - 6;
+	liveAccountStartId = 6;
+
+	nextAccountId = liveAccountStartId + numberOfAccounts;
+
+	MemoryContextUpdateSharedHeaders(TopMemoryContext, offset);
+	return offset;
 }
 
 /*
@@ -1308,6 +1337,16 @@ AdvanceMemoryAccountingGeneration()
 	 */
 	RolloverMemoryAccount->peak = Max(RolloverMemoryAccount->peak, MemoryAccountingPeakBalance);
 
+	// Starts at 6 => First 5 are for long living
+	// nextAccountId => 6
+
+	// Statement 1: 6 -> 15 (10 accounts)
+	// statement 2: 16 (live start) and next. -> creating accounts, 16, 17, 18. next => 19
+	// st3: live = 19, next 19.
+
+	// void *p = palloc(10); special header in the allocation that tracks which account.
+	// It will actually allocate 10 + sizeof(sharedheader *) => 18 bytes.
+	// A special header that tracks which memory account owns this memory.
 	liveAccountStartId = nextAccountId;
 
 	Assert(RolloverMemoryAccount->peak >= MemoryAccountingPeakBalance);
