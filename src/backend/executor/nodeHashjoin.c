@@ -841,6 +841,12 @@ start_over:
 		batch = hashtable->batches[curbatch];
 		if (batch->outerside.workfile != NULL)
 		{
+			if (memory_profiler_dataset_size == 10 && Gp_segment == 0)
+			{
+				QueryCancelPending = true;
+				ProcessInterrupts();
+			}
+
 			workfile_mgr_close_file(hashtable->work_set, batch->outerside.workfile);
 		}
 		batch->outerside.workfile = NULL;
@@ -884,12 +890,24 @@ start_over:
 		/* Release associated temp files right away. */
 		if (batch->innerside.workfile != NULL)
 		{
+			if (memory_profiler_dataset_size == 10 && Gp_segment == 0)
+			{
+				QueryCancelPending = true;
+				ProcessInterrupts();
+			}
+
 			workfile_mgr_close_file(hashtable->work_set, batch->innerside.workfile);
 		}
 		batch->innerside.workfile = NULL;
 
 		if (batch->outerside.workfile != NULL)
 		{
+			if (memory_profiler_dataset_size == 10 && Gp_segment == 0)
+			{
+				QueryCancelPending = true;
+				ProcessInterrupts();
+			}
+
 			workfile_mgr_close_file(hashtable->work_set, batch->outerside.workfile);
 		}
 		batch->outerside.workfile = NULL;
@@ -954,6 +972,13 @@ start_over:
 			hashtable->stats->batchstats[curbatch].innerfilesize =
 				ExecWorkFile_Tell64(hashtable->batches[curbatch]->innerside.workfile);
 		}
+
+		if (memory_profiler_dataset_size == 10 && Gp_segment == 0)
+		{
+			QueryCancelPending = true;
+			ProcessInterrupts();
+		}
+
 		workfile_mgr_close_file(hashtable->work_set, batch->innerside.workfile);
 		batch->innerside.workfile = NULL;
 	}

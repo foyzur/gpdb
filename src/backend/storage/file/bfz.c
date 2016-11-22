@@ -437,6 +437,9 @@ bfz_create_internal(bfz_t *bfz_handle, const char *fileName, bool open_existing,
 void
 bfz_close(bfz_t * thiz, bool unreg, bool error_on_unlink)
 {
+	ereport(WARNING, (errmsg("bfz_close. unreg: %d, fd: %d, del_on_close: %d, filename: %s",
+			unreg, thiz->fd, thiz->del_on_close, thiz->filename == NULL? "NONE": thiz->filename), errprintstack(true)));
+
 	if (unreg)
 		UnregisterXactCallbackOnce(bfz_close_callback, thiz);
 
