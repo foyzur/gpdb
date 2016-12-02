@@ -927,6 +927,15 @@ FormatNode
 Form_pg_window
 FrameBufferEntry
 free_func
+FreeBlockNumberArray
+FreeListData
+FreePageBtree
+FreePageBtreeHeader
+FreePageBtreeInternalKey
+FreePageBtreeLeafKey
+FreePageBtreeSearchResult
+FreePageManager
+FreePageSpanLeader
 FromCharDateMode
 FromExpr
 FuncCall
