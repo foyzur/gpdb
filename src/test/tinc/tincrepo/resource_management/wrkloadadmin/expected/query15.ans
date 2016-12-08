@@ -1,0 +1,44 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE tom55 ACTIVE THRESHOLD 10;
+CREATE QUEUE
+
+--create role and assign role to resource queue
+CREATE ROLE shaun55 with LOGIN RESOURCE QUEUE tom55;
+CREATE ROLE
+
+-- select from pg_resqueue, pg_role table
+SELECT rolname, rsqname, pid, granted, current_query,datname FROM pg_roles, pg_resqueue, pg_locks, pg_stat_activity WHERE pg_roles.rolresqueue=pg_locks.objid AND pg_locks.objid=pg_resqueue.oid AND pg_stat_activity.procpid=pg_locks.pid;
+ rolname | rsqname | pid | granted | current_query | datname 
+---------+---------+-----+---------+---------------+---------
+(0 rows)
+
+
+-- create a view
+CREATE VIEW resq_procs AS SELECT rolname, rsqname, pid, granted, current_query,datname FROM pg_roles, pg_resqueue, pg_locks, pg_stat_activity WHERE pg_roles.rolresqueue=pg_locks.objid AND pg_locks.objid=pg_resqueue.oid AND pg_stat_activity.procpid=pg_locks.pid;
+CREATE VIEW
+
+-- select from view
+select * from resq_procs;
+ rolname | rsqname | pid | granted | current_query | datname 
+---------+---------+-----+---------+---------------+---------
+(0 rows)
+
+
+-- drop role name
+DROP ROLE shaun55;
+DROP ROLE
+
+-- drop resource queue
+DROP RESOURCE QUEUE tom55;
+DROP QUEUE
+
+-- select from view
+--select * from resq_procs;
+
+-- drop view
+DROP VIEW resq_procs;
+DROP VIEW
+
+

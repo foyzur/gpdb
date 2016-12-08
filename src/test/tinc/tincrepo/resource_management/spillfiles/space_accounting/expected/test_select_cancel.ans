@@ -1,0 +1,27 @@
+-- start_ignore
+-- end_ignore
+set gp_workfile_type_hashjoin=buffile; 
+SET
+--SET gp_workfile_caching_loglevel="LOG"; 
+set statement_mem=2048; 
+SET
+set gp_autostats_mode = none;
+SET
+-- run repro
+begin; 
+BEGIN
+SELECT t1.* FROM hj_skew AS t1, hj_skew AS t2 WHERE t1.i1=t2.i2;
+psql:/Users/gcaragea/dev/tincrepo/main/resource_management/spillfiles/space_accounting/output/test_select_cancel.sql:14: ERROR:  canceling MPP operation  (seg0 slice2 gcaragea-mbp.local:40050 pid=98181)
+rollback; 
+ROLLBACK
+-- check used segspace after test
+reset statement_mem; 
+RESET
+select * from mpp_23802_gp_workfile_segspace; 
+ segid | size 
+-------+------
+     1 |    0
+     0 |    0
+    -1 |    0
+(3 rows)
+

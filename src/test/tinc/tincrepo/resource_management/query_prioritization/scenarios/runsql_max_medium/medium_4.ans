@@ -1,0 +1,146 @@
+\c - medium_3_pri_role
+You are now connected to database "memory_quota" as user "medium_3_pri_role".
+select
+        l_returnflag,
+        l_linestatus,
+        sum(l_quantity) as sum_qty,
+        sum(l_extendedprice) as sum_base_price,
+        sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+        avg(l_quantity) as avg_qty,
+        avg(l_extendedprice) as avg_price,
+        avg(l_discount) as avg_disc,
+        count(*) as count_order
+from
+        lineitem
+where
+        l_shipdate <= date '1998-12-01' - interval '108 day'
+group by
+        l_returnflag,
+        l_linestatus
+union all
+select
+        l_returnflag,
+        l_linestatus,
+        sum(l_quantity) as sum_qty,
+        sum(l_extendedprice) as sum_base_price,
+        sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+        avg(l_quantity) as avg_qty,
+        avg(l_extendedprice) as avg_price,
+        avg(l_discount) as avg_disc,
+        count(*) as count_order
+from
+        lineitem
+where
+        l_shipdate <= date '1998-12-01' - interval '108 day'
+group by
+        l_returnflag,
+        l_linestatus
+union all
+select
+        l_returnflag,
+        l_linestatus,
+        sum(l_quantity) as sum_qty,
+        sum(l_extendedprice) as sum_base_price,
+        sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+        avg(l_quantity) as avg_qty,
+        avg(l_extendedprice) as avg_price,
+        avg(l_discount) as avg_disc,
+        count(*) as count_order
+from
+        lineitem
+where
+        l_shipdate <= date '1998-12-01' - interval '108 day'
+group by
+        l_returnflag,
+        l_linestatus
+union all
+select
+        l_returnflag,
+        l_linestatus,
+        sum(l_quantity) as sum_qty,
+        sum(l_extendedprice) as sum_base_price,
+        sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+        avg(l_quantity) as avg_qty,
+        avg(l_extendedprice) as avg_price,
+        avg(l_discount) as avg_disc,
+        count(*) as count_order
+from
+        lineitem
+where
+        l_shipdate <= date '1998-12-01' - interval '108 day'
+group by
+        l_returnflag,
+        l_linestatus
+union all
+select
+        l_returnflag,
+        l_linestatus,
+        sum(l_quantity) as sum_qty,
+        sum(l_extendedprice) as sum_base_price,
+        sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+        avg(l_quantity) as avg_qty,
+        avg(l_extendedprice) as avg_price,
+        avg(l_discount) as avg_disc,
+        count(*) as count_order
+from
+        lineitem
+where
+        l_shipdate <= date '1998-12-01' - interval '108 day'
+group by
+        l_returnflag,
+        l_linestatus
+union all
+select
+        l_returnflag,
+        l_linestatus,
+        sum(l_quantity) as sum_qty,
+        sum(l_extendedprice) as sum_base_price,
+        sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+        avg(l_quantity) as avg_qty,
+        avg(l_extendedprice) as avg_price,
+        avg(l_discount) as avg_disc,
+        count(*) as count_order
+from
+        lineitem
+where
+        l_shipdate <= date '1998-12-01' - interval '108 day'
+group by
+        l_returnflag,
+        l_linestatus
+order by
+        l_returnflag,
+        l_linestatus;
+ l_returnflag | l_linestatus |   sum_qty    | sum_base_price  |  sum_disc_price   |     sum_charge      |       avg_qty       |     avg_price      |        avg_disc        | count_order 
+--------------+--------------+--------------+-----------------+-------------------+---------------------+---------------------+--------------------+------------------------+-------------
+ A            | F            | 301981676.00 | 452862872855.22 | 430217298491.0706 | 447430029755.306373 | 25.5000918734551242 | 38240.879436290488 | 0.05000273424860011200 |    11842376
+ A            | F            | 301981676.00 | 452862872855.22 | 430217298491.0706 | 447430029755.306373 | 25.5000918734551242 | 38240.879436290488 | 0.05000273424860011200 |    11842376
+ A            | F            | 301981676.00 | 452862872855.22 | 430217298491.0706 | 447430029755.306373 | 25.5000918734551242 | 38240.879436290488 | 0.05000273424860011200 |    11842376
+ A            | F            | 301981676.00 | 452862872855.22 | 430217298491.0706 | 447430029755.306373 | 25.5000918734551242 | 38240.879436290488 | 0.05000273424860011200 |    11842376
+ A            | F            | 301981676.00 | 452862872855.22 | 430217298491.0706 | 447430029755.306373 | 25.5000918734551242 | 38240.879436290488 | 0.05000273424860011200 |    11842376
+ A            | F            | 301981676.00 | 452862872855.22 | 430217298491.0706 | 447430029755.306373 | 25.5000918734551242 | 38240.879436290488 | 0.05000273424860011200 |    11842376
+ N            | F            |   7879902.00 |  11811777309.21 |  11221553950.7886 |  11670700525.575913 | 25.5236031483820814 | 38259.246944611797 | 0.04996958507433679914 |      308730
+ N            | F            |   7879902.00 |  11811777309.21 |  11221553950.7886 |  11670700525.575913 | 25.5236031483820814 | 38259.246944611797 | 0.04996958507433679914 |      308730
+ N            | F            |   7879902.00 |  11811777309.21 |  11221553950.7886 |  11670700525.575913 | 25.5236031483820814 | 38259.246944611797 | 0.04996958507433679914 |      308730
+ N            | F            |   7879902.00 |  11811777309.21 |  11221553950.7886 |  11670700525.575913 | 25.5236031483820814 | 38259.246944611797 | 0.04996958507433679914 |      308730
+ N            | F            |   7879902.00 |  11811777309.21 |  11221553950.7886 |  11670700525.575913 | 25.5236031483820814 | 38259.246944611797 | 0.04996958507433679914 |      308730
+ N            | F            |   7879902.00 |  11811777309.21 |  11221553950.7886 |  11670700525.575913 | 25.5236031483820814 | 38259.246944611797 | 0.04996958507433679914 |      308730
+ N            | O            | 587089574.00 | 880345824342.30 | 836327307312.6459 | 869786870819.967073 | 25.4985364683322184 | 38235.272947865577 | 0.04999933679174505076 |    23024442
+ N            | O            | 587089574.00 | 880345824342.30 | 836327307312.6459 | 869786870819.967073 | 25.4985364683322184 | 38235.272947865577 | 0.04999933679174505076 |    23024442
+ N            | O            | 587089574.00 | 880345824342.30 | 836327307312.6459 | 869786870819.967073 | 25.4985364683322184 | 38235.272947865577 | 0.04999933679174505076 |    23024442
+ N            | O            | 587089574.00 | 880345824342.30 | 836327307312.6459 | 869786870819.967073 | 25.4985364683322184 | 38235.272947865577 | 0.04999933679174505076 |    23024442
+ N            | O            | 587089574.00 | 880345824342.30 | 836327307312.6459 | 869786870819.967073 | 25.4985364683322184 | 38235.272947865577 | 0.04999933679174505076 |    23024442
+ N            | O            | 587089574.00 | 880345824342.30 | 836327307312.6459 | 869786870819.967073 | 25.4985364683322184 | 38235.272947865577 | 0.04999933679174505076 |    23024442
+ R            | F            | 302100046.00 | 453010299908.07 | 430360970258.3027 | 447573348793.275904 | 25.5087755325198841 | 38251.361452207362 | 0.04999670860006999924 |    11842985
+ R            | F            | 302100046.00 | 453010299908.07 | 430360970258.3027 | 447573348793.275904 | 25.5087755325198841 | 38251.361452207362 | 0.04999670860006999924 |    11842985
+ R            | F            | 302100046.00 | 453010299908.07 | 430360970258.3027 | 447573348793.275904 | 25.5087755325198841 | 38251.361452207362 | 0.04999670860006999924 |    11842985
+ R            | F            | 302100046.00 | 453010299908.07 | 430360970258.3027 | 447573348793.275904 | 25.5087755325198841 | 38251.361452207362 | 0.04999670860006999924 |    11842985
+ R            | F            | 302100046.00 | 453010299908.07 | 430360970258.3027 | 447573348793.275904 | 25.5087755325198841 | 38251.361452207362 | 0.04999670860006999924 |    11842985
+ R            | F            | 302100046.00 | 453010299908.07 | 430360970258.3027 | 447573348793.275904 | 25.5087755325198841 | 38251.361452207362 | 0.04999670860006999924 |    11842985
+(24 rows)
+

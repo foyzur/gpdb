@@ -1,0 +1,41 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE sameera ACTIVE THRESHOLD 2;
+CREATE QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue where rsqname='sameera';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+ sameera |             2 |           -1 | f             |                  0
+(1 row)
+
+
+--create role and assign role to resource queue
+CREATE ROLE aryan with LOGIN RESOURCE QUEUE sameera;
+CREATE ROLE
+
+-- ALTER Resource Queue
+ALTER ROLE aryan RESOURCE QUEUE none;
+psql:/Users/raghav/dev/tincrepo/private/QP/resource_management/wrkloadadmin/sql/../output/query08_gucs.sql:13: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+
+-- select role, resource queue details from pg_roles and pg_resqueue tables
+SELECT rolname, rsqname FROM pg_roles AS r,pg_resqueue AS q WHERE r.rolresqueue=q.oid and rolname='aryan';
+ rolname |  rsqname   
+---------+------------
+ aryan   | pg_default
+(1 row)
+
+
+-- drop role
+DROP ROLE aryan;
+DROP ROLE
+
+-- drop resource queue
+DROP RESOURCE QUEUE sameera;
+DROP QUEUE
+
+-- select from pg_resqueue table
+--select * from pg_resqueue;

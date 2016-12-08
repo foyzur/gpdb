@@ -1,0 +1,30 @@
+-- start_ignore
+-- end_ignore
+-- @author gcaragea
+-- @created 2014-08-13 12:00:00
+-- @modified 2014-08-13 12:00:00
+-- @tags MPP-23155 bfv FEATURE_BRANCH_ONLY
+-- @product_version gpdb: 4.3.2.0A, 4.3.2.0ORCA1, [5.0-], 4.3.99.99
+-- start_ignore
+drop table if exists mpp23155_t1; 
+psql:/data/caragg/tincrepo/private/QP/resource_management/memory_quota/eager_free/out/mpp23155.sql:13: NOTICE:  table "mpp23155_t1" does not exist, skipping
+DROP TABLE
+-- end_ignore
+create table mpp23155_t1 (i1 int, i2 int) distributed by (i1);
+CREATE TABLE
+set statement_mem='1500kB';
+SET
+set gp_resqueue_memory_policy_auto_fixed_mem='1000kB';
+SET
+set gp_resqueue_memory_policy=eager_free; 
+SET
+select * from mpp23155_t1;
+psql:/data/caragg/tincrepo/private/QP/resource_management/memory_quota/eager_free/out/mpp23155.sql:21: ERROR:  insufficient memory reserved for statement
+set gp_resqueue_memory_policy=auto; 
+SET
+select * from mpp23155_t1;
+psql:/data/caragg/tincrepo/private/QP/resource_management/memory_quota/eager_free/out/mpp23155.sql:24: ERROR:  insufficient memory reserved for statement (memquota.c:466)
+-- start_ignore
+drop table if exists mpp23155_t1; 
+DROP TABLE
+-- end_ignore

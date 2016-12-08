@@ -1,0 +1,41 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE adhoc13 ACTIVE THRESHOLD 2;
+CREATE QUEUE
+CREATE RESOURCE QUEUE adhoc14 ACTIVE THRESHOLD 3;
+CREATE QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue where rsqname='adhoc13' and rsqname='adhoc14';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+(0 rows)
+
+
+--create role and assign role to resource queue
+CREATE ROLE role13 with LOGIN RESOURCE QUEUE adhoc13;
+CREATE ROLE
+CREATE ROLE role14 with LOGIN RESOURCE QUEUE adhoc14;
+CREATE ROLE
+
+-- select role, resource queue details from pg_roles and pg_resqueue tables
+SELECT rolname, rsqname FROM pg_roles AS r,pg_resqueue AS q WHERE r.rolresqueue=q.oid and rolname in ('role13','role14');
+ rolname | rsqname 
+---------+---------
+ role13  | adhoc13
+ role14  | adhoc14
+(2 rows)
+
+
+-- drop role
+DROP ROLE IF EXISTS role13;
+DROP ROLE
+DROP ROLE IF EXISTS role14;
+DROP ROLE
+
+-- drop resource queue
+DROP RESOURCE QUEUE adhoc13;
+DROP QUEUE
+DROP RESOURCE QUEUE adhoc14;
+DROP QUEUE

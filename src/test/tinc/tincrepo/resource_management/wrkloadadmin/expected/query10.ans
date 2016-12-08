@@ -1,0 +1,44 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE camy11 COST THRESHOLD 200.0;
+CREATE QUEUE
+CREATE RESOURCE QUEUE camy22 COST THRESHOLD 500.0;
+CREATE QUEUE
+
+
+-- select from pg_resqueue table
+select * from pg_resqueue_status where rsqname in ('camy11','camy22');
+ rsqname | rsqcountlimit | rsqcountvalue | rsqcostlimit | rsqcostvalue | rsqwaiters | rsqholders 
+---------+---------------+---------------+--------------+--------------+------------+------------
+ camy11  |            -1 |               |          200 |            0 |          0 |          0
+ camy22  |            -1 |               |          500 |            0 |          0 |          0
+(2 rows)
+
+
+--create role and assign role to resource queue
+CREATE ROLE creig11 with LOGIN RESOURCE QUEUE camy11;
+CREATE ROLE
+CREATE ROLE creig22 with LOGIN RESOURCE QUEUE camy22;
+CREATE ROLE
+
+-- ALTER Resource Queue
+ALTER ROLE creig11 RESOURCE QUEUE camy11;
+ALTER ROLE
+ALTER ROLE creig22 RESOURCE QUEUE camy22;
+ALTER ROLE
+
+-- drop role
+DROP ROLE creig11;
+DROP ROLE
+DROP ROLE creig22;
+DROP ROLE
+
+-- drop resource queue
+DROP RESOURCE QUEUE camy11;
+DROP QUEUE
+DROP RESOURCE QUEUE camy22;
+DROP QUEUE
+
+-- select from pg_resqueue_status table
+--select * from pg_resqueue_status;

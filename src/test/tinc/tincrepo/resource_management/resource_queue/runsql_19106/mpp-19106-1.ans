@@ -1,0 +1,10 @@
+select pg_sleep(2);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+alter role u1 with resource queue q2;
+ALTER ROLE
+drop resource queue q1;
+DROP QUEUE

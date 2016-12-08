@@ -1,0 +1,40 @@
+revoke select on lineitem from max_0_pri_role;
+REVOKE
+alter role max_0_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_max_min_gucs.sql:2: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user max_0_pri_role;
+DROP ROLE
+drop resource queue rq_max;
+DROP QUEUE
+revoke select on lineitem from min_0_pri_role;
+REVOKE
+alter role min_0_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_max_min_gucs.sql:6: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user min_0_pri_role;
+DROP ROLE
+revoke select on lineitem from min_1_pri_role;
+REVOKE
+alter role min_1_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_max_min_gucs.sql:9: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user min_1_pri_role;
+DROP ROLE
+revoke select on lineitem from min_2_pri_role;
+REVOKE
+alter role min_2_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_max_min_gucs.sql:6: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user min_2_pri_role;
+DROP ROLE
+revoke select on lineitem from min_3_pri_role;
+REVOKE
+alter role min_3_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_max_min_gucs.sql:6: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user min_3_pri_role;
+DROP ROLE
+drop resource queue rq_min;
+DROP QUEUE
+

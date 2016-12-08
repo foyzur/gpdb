@@ -1,0 +1,30 @@
+select pg_sleep(5);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+select rqpusename,rqppriority from gp_toolkit.gp_resq_priority_statement where rqpusename like '%_role' order by rqpusename;
+   rqpusename   | rqppriority 
+----------------+-------------
+ min_0_pri_role | MIN
+ min_1_pri_role | MIN
+ min_2_pri_role | MIN
+ min_3_pri_role | MIN
+(4 rows)
+
+select gp_adjust_priority((select rqpsession from gp_toolkit.gp_resq_priority_statement where rqpusename = 'min_0_pri_role'), (select rqpcommand from gp_toolkit.gp_resq_priority_statement where rqpusename = 'min_0_pri_role'), 'MAX');
+ gp_adjust_priority 
+--------------------
+                  1
+(1 row)
+
+select rqpusename,rqppriority from gp_toolkit.gp_resq_priority_statement where rqpusename like '%_role' order by rqpusename;
+   rqpusename   | rqppriority 
+----------------+-------------
+ min_0_pri_role | MAX
+ min_1_pri_role | MIN
+ min_2_pri_role | MIN
+ min_3_pri_role | MIN
+(4 rows)
+

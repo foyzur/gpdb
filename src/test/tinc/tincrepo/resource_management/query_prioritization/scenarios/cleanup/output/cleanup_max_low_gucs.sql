@@ -1,0 +1,17 @@
+revoke select on lineitem from max_0_pri_role;
+alter role max_0_pri_role with resource queue none;
+drop user max_0_pri_role;
+drop resource queue rq_max;
+revoke select on lineitem from low_0_pri_role;
+alter role low_0_pri_role with resource queue none;
+drop user low_0_pri_role;
+revoke select on lineitem from low_1_pri_role;
+alter role low_1_pri_role with resource queue none;
+drop user low_1_pri_role;
+revoke select on lineitem from low_2_pri_role;
+alter role low_2_pri_role with resource queue none;
+drop user low_2_pri_role;
+revoke select on lineitem from low_3_pri_role;
+alter role low_3_pri_role with resource queue none;
+drop user low_3_pri_role;
+drop resource queue rq_low;

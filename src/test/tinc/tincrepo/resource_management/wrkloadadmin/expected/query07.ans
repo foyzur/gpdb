@@ -1,0 +1,32 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE bob ACTIVE THRESHOLD 1;
+CREATE QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue where rsqname='bob';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+ bob     |             1 |           -1 | f             |                  0
+(1 row)
+
+
+-- ALTER Resource Queue
+ALTER RESOURCE QUEUE bob ACTIVE THRESHOLD 7;
+ALTER QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue where rsqname='bob';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+ bob     |             7 |           -1 | f             |                  0
+(1 row)
+
+
+-- drop resource queue
+DROP RESOURCE QUEUE bob;
+DROP QUEUE
+
+-- select from pg_resqueue table
+-- select * from pg_resqueue;

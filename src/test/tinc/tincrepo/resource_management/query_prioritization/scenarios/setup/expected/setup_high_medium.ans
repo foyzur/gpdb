@@ -1,0 +1,68 @@
+--start_ignore
+revoke select on lineitem from high_0_pri_role;
+REVOKE
+revoke select on lineitem from medium_0_pri_role;
+REVOKE
+revoke select on lineitem from medium_1_pri_role;
+REVOKE
+revoke select on lineitem from medium_2_pri_role;
+REVOKE
+revoke select on lineitem from medium_3_pri_role;
+REVOKE
+drop user high_0_pri_role;
+DROP ROLE
+drop user medium_0_pri_role;
+DROP ROLE
+drop user medium_1_pri_role;
+DROP ROLE
+drop user medium_2_pri_role;
+DROP ROLE
+drop user medium_3_pri_role;
+DROP ROLE
+drop resource queue rq_high;
+DROP QUEUE
+drop resource queue rq_medium;
+DROP QUEUE
+--end_ignore
+-- Creating resource queue rq_high
+create resource queue rq_high with (active_statements=100, priority=high);
+CREATE QUEUE
+-- Creating users with priority high
+create user high_0_pri_role with nosuperuser resource queue rq_high;
+CREATE ROLE
+alter user high_0_pri_role with resource queue rq_high;
+ALTER ROLE
+grant select on lineitem to high_0_pri_role;
+GRANT
+-- Creating resource queue rq_medium
+create resource queue rq_medium with (active_statements=100, priority=medium);
+CREATE QUEUE
+-- Creating users with priority medium
+create user medium_0_pri_role with nosuperuser resource queue rq_medium;
+CREATE ROLE
+alter user medium_0_pri_role with resource queue rq_medium;
+ALTER ROLE
+grant select on lineitem to medium_0_pri_role;
+GRANT
+-- Creating users with priority medium
+create user medium_1_pri_role with nosuperuser resource queue rq_medium;
+CREATE ROLE
+alter user medium_1_pri_role with resource queue rq_medium;
+ALTER ROLE
+grant select on lineitem to medium_1_pri_role;
+GRANT
+-- Creating users with priority medium
+create user medium_2_pri_role with nosuperuser resource queue rq_medium;
+CREATE ROLE
+alter user medium_2_pri_role with resource queue rq_medium;
+ALTER ROLE
+grant select on lineitem to medium_2_pri_role;
+GRANT
+-- Creating users with priority medium
+create user medium_3_pri_role with nosuperuser resource queue rq_medium;
+CREATE ROLE
+alter user medium_3_pri_role with resource queue rq_medium;
+ALTER ROLE
+grant select on lineitem to medium_3_pri_role;
+GRANT
+

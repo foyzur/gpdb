@@ -1,0 +1,16 @@
+revoke select on lineitem from min_0_pri_role;
+alter role min_0_pri_role with resource queue none;
+drop user min_0_pri_role;
+revoke select on lineitem from min_1_pri_role;
+alter role min_1_pri_role with resource queue none;
+drop user min_1_pri_role;
+revoke select on lineitem from min_2_pri_role;
+alter role min_2_pri_role with resource queue none;
+drop user min_2_pri_role;
+revoke select on lineitem from min_3_pri_role;
+alter role min_3_pri_role with resource queue none;
+drop user min_3_pri_role;
+revoke select on lineitem from min_4_pri_role;
+alter role min_4_pri_role with resource queue none;
+drop user min_4_pri_role;
+drop resource queue rq_min;

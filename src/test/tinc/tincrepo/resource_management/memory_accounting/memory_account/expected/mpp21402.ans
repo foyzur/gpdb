@@ -1,0 +1,12 @@
+-- @author guz4
+-- @created 2014-09-09 12:00:00 
+-- @modified 2014-09-09 12:00:00
+-- @tags MPP-21402 bfv FEATURE_BRANCH_ONLY
+-- @gucs optimizer_enable_indexjoin=on
+-- @optimizer_mode both
+-- @product_version gpdb: 4.3.99.99, [5.0-]
+select count(*) from mpp21402;
+ count 
+-------
+   100
+(1 row)

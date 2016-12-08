@@ -1,0 +1,40 @@
+revoke select on lineitem from high_0_pri_role;
+REVOKE
+alter role high_0_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_high_low_gucs.sql:2: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user high_0_pri_role;
+DROP ROLE
+drop resource queue rq_high;
+DROP QUEUE
+revoke select on lineitem from low_0_pri_role;
+REVOKE
+alter role low_0_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_high_low_gucs.sql:6: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user low_0_pri_role;
+DROP ROLE
+revoke select on lineitem from low_1_pri_role;
+REVOKE
+alter role low_1_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_high_low_gucs.sql:9: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user low_1_pri_role;
+DROP ROLE
+revoke select on lineitem from low_2_pri_role;
+REVOKE
+alter role low_2_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_high_low_gucs.sql:6: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user low_2_pri_role;
+DROP ROLE
+revoke select on lineitem from low_3_pri_role;
+REVOKE
+alter role low_3_pri_role with resource queue none;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/query_prioritization/sql/../output/cleanup_high_low_gucs.sql:6: NOTICE:  resource queue required -- using default resource queue "pg_default"
+ALTER ROLE
+drop user low_3_pri_role;
+DROP ROLE
+drop resource queue rq_low;
+DROP QUEUE
+

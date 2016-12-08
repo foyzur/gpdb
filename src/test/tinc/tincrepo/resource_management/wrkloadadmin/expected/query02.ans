@@ -1,0 +1,20 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE adhoc12 ACTIVE THRESHOLD 2;
+CREATE QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue where rsqname='adhoc12';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+ adhoc12 |             2 |           -1 | f             |                  0
+(1 row)
+
+
+-- drop resource queue
+DROP RESOURCE QUEUE adhoc12;
+DROP QUEUE
+
+-- select from pg_resqueue table
+--select * from pg_resqueue;

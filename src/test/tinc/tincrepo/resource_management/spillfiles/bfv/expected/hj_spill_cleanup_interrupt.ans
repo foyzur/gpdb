@@ -1,0 +1,6 @@
+-- start_ignore
+-- end_ignore
+SET statement_mem=5000;
+SET
+SELECT t1.* FROM test_spill_nodrop AS t1, test_spill_nodrop AS t2 WHERE t1.i1=t2.i2;
+psql:/data/caragg/tincrepo/main/resource_management/spillfiles/bfv/output/hj_spill_cleanup_interrupt.sql:7: ERROR:  canceling MPP operation  (seg0 slice2 gcvm2:40040 pid=55229)

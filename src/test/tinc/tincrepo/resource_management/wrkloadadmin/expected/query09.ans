@@ -1,0 +1,45 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE ram ACTIVE THRESHOLD 1;
+CREATE QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue where rsqname='ram';
+ rsqname | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+---------+---------------+--------------+---------------+--------------------
+ ram     |             1 |           -1 | f             |                  0
+(1 row)
+
+
+--create role and assign role to resource queue
+CREATE ROLE sita with LOGIN RESOURCE QUEUE ram;
+CREATE ROLE
+CREATE ROLE samrat with LOGIN RESOURCE QUEUE ram;
+CREATE ROLE
+
+-- ALTER ROLE
+ALTER ROLE sita RESOURCE QUEUE ram;
+ALTER ROLE
+ALTER ROLE samrat RESOURCE QUEUE ram;
+ALTER ROLE
+
+-- select role, resource queue details from pg_roles and pg_resqueue tables
+SELECT rolname, rsqname FROM pg_roles AS r,pg_resqueue AS q WHERE r.rolresqueue=q.oid and rsqname='ram';
+ rolname | rsqname 
+---------+---------
+ sita    | ram
+ samrat  | ram
+(2 rows)
+
+
+-- drop role
+DROP ROLE sita;
+DROP ROLE
+DROP ROLE samrat;
+DROP ROLE
+
+
+-- drop resource queue
+DROP RESOURCE QUEUE ram;
+DROP QUEUE

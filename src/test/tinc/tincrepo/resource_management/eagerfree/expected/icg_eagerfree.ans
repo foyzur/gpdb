@@ -1,0 +1,50 @@
+-- @author garcic12
+-- @created 2013-11-20 12:00:00
+-- @modified 2013-11-20 12:00:00
+-- @tags ci
+-- @description Eagerfree test for subquery unnesting.
+select * from smallt_part where i < any (select count(*) from smallt2_part where smallt_part.i = smallt2_part.i group by d);
+ i |    t    |     d      
+---+---------+------------
+ 1 | text 1  | 2011-01-02
+ 3 | text 3  | 2011-01-04
+ 1 | text 6  | 2011-01-02
+ 3 | text 8  | 2011-01-04
+ 1 | text 11 | 2011-01-02
+ 3 | text 13 | 2011-01-04
+ 1 | text 1  | 2011-01-02
+ 3 | text 3  | 2011-01-04
+ 1 | text 6  | 2011-01-02
+ 3 | text 8  | 2011-01-04
+ 1 | text 11 | 2011-01-12
+ 3 | text 13 | 2011-01-14
+ 1 | text 1  | 2011-01-12
+ 3 | text 3  | 2011-01-14
+ 1 | text 6  | 2011-01-12
+ 3 | text 8  | 2011-01-14
+ 1 | text 11 | 2011-01-12
+ 3 | text 13 | 2011-01-14
+ 1 | text 1  | 2011-01-12
+ 3 | text 3  | 2011-01-14
+ 0 | text 0  | 2011-01-01
+ 2 | text 2  | 2011-01-03
+ 0 | text 5  | 2011-01-01
+ 2 | text 7  | 2011-01-03
+ 0 | text 10 | 2011-01-01
+ 2 | text 12 | 2011-01-03
+ 0 | text 0  | 2011-01-01
+ 2 | text 2  | 2011-01-03
+ 0 | text 5  | 2011-01-01
+ 2 | text 7  | 2011-01-03
+ 0 | text 10 | 2011-01-11
+ 2 | text 12 | 2011-01-13
+ 0 | text 0  | 2011-01-11
+ 2 | text 2  | 2011-01-13
+ 0 | text 5  | 2011-01-11
+ 2 | text 7  | 2011-01-13
+ 0 | text 10 | 2011-01-11
+ 2 | text 12 | 2011-01-13
+ 0 | text 0  | 2011-01-11
+ 2 | text 2  | 2011-01-13
+(40 rows)
+

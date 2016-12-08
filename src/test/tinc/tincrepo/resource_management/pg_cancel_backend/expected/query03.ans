@@ -1,0 +1,4 @@
+ datid | datname | procpid | sess_id | usesysid | usename | current_query | waiting | query_start | backend_start | client_addr | client_port | application_name | xact_start 
+-------+---------+---------+---------+----------+---------+---------------+---------+-------------+---------------+-------------+-------------+------------------+------------
+(0 rows)
+

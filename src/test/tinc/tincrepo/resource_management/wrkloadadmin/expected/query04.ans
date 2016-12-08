@@ -1,0 +1,26 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE adhoc1 ACTIVE THRESHOLD 1;
+CREATE QUEUE
+CREATE RESOURCE QUEUE adhoc2 ACTIVE THRESHOLD 2;
+CREATE QUEUE
+CREATE RESOURCE QUEUE adhoc3 ACTIVE THRESHOLD 3;
+CREATE QUEUE
+--CREATE RESOURCE QUEUE adhoc4 ACTIVE THRESHOLD 4;
+
+-- select from pg_resqueue table
+--select * from pg_resqueue;
+
+-- drop resource queue
+DROP RESOURCE QUEUE adhoc1;
+DROP QUEUE
+DROP RESOURCE QUEUE adhoc2;
+DROP QUEUE
+DROP RESOURCE QUEUE adhoc3;
+DROP QUEUE
+--DROP RESOURCE QUEUE adhoc4;
+
+-- select from pg_resqueue table
+--select * from pg_resqueue;
+

@@ -1,0 +1,14 @@
+--start_ignore
+drop role u1;
+DROP ROLE
+drop resource queue q1;
+DROP QUEUE
+drop resource queue q2;
+DROP QUEUE
+--end_ignore
+create resource queue q1 with (active_statements = 5);
+CREATE QUEUE
+create resource queue q2 with (active_statements = 5);
+CREATE QUEUE
+create role u1 with login resource queue q1;
+CREATE ROLE

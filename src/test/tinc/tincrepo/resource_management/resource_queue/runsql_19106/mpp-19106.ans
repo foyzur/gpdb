@@ -1,0 +1,5 @@
+set role u1;
+SET
+\! sleep 15
+select 1 from pg_class limit 1;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/query/resource_queue/runsql_19106/mpp-19106.sql:5: ERROR:  cannot find queue id 32768 (resqueue.c:857)

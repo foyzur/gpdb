@@ -1,0 +1,18 @@
+--start_ignore
+REVOKE ALL PRIVILEGES ON PUBLIC.orders FROM testuser1;
+REVOKE
+DROP USER IF EXISTS testuser1;
+DROP ROLE
+DROP RESOURCE QUEUE resourcequeue1;
+DROP QUEUE
+--end_ignore
+
+create user testuser1 with nosuperuser nocreatedb nocreaterole;
+psql:/data/suchitra/workspace/tincrepo/private/suchitra/resource_management/memory_quota/resource_queues/setup/./.././create_queues_gucs.sql:7: NOTICE:  resource queue required -- using default resource queue "pg_default"
+CREATE ROLE
+GRANT ALL PRIVILEGES ON PUBLIC.orders TO testuser1;
+GRANT
+create resource queue resourcequeue1 active threshold 10;
+CREATE QUEUE
+alter role testuser1 with resource queue resourcequeue1;
+ALTER ROLE

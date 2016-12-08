@@ -1,0 +1,62 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue and assuming that 8 is the maximum limit for the resource queue and 1 resource queue is already present in the table
+-- it will give error if it crosses the maximum limit of resource queue
+CREATE RESOURCE QUEUE adhoc1 ACTIVE THRESHOLD 1;
+CREATE QUEUE
+CREATE RESOURCE QUEUE webuser1 ACTIVE THRESHOLD 3;
+CREATE QUEUE
+CREATE RESOURCE QUEUE mgmtuser1 ACTIVE THRESHOLD 5;
+CREATE QUEUE
+CREATE RESOURCE QUEUE mgmtuser2 ACTIVE THRESHOLD 7;
+CREATE QUEUE
+CREATE RESOURCE QUEUE mgmtuser3 ACTIVE THRESHOLD 9;
+CREATE QUEUE
+CREATE RESOURCE QUEUE mgmtuser4 ACTIVE THRESHOLD 8;
+CREATE QUEUE
+CREATE RESOURCE QUEUE mgmtuser5 ACTIVE THRESHOLD 6;
+CREATE QUEUE
+CREATE RESOURCE QUEUE mgmtuser6 ACTIVE THRESHOLD 2;
+CREATE QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue;
+  rsqname   | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+------------+---------------+--------------+---------------+--------------------
+ pg_default |            20 |           -1 | f             |                  0
+ adhoc1     |             1 |           -1 | f             |                  0
+ webuser1   |             3 |           -1 | f             |                  0
+ mgmtuser1  |             5 |           -1 | f             |                  0
+ mgmtuser2  |             7 |           -1 | f             |                  0
+ mgmtuser3  |             9 |           -1 | f             |                  0
+ mgmtuser4  |             8 |           -1 | f             |                  0
+ mgmtuser5  |             6 |           -1 | f             |                  0
+ mgmtuser6  |             2 |           -1 | f             |                  0
+(9 rows)
+
+
+-- drop resource queue
+DROP RESOURCE QUEUE adhoc1;
+DROP QUEUE
+DROP RESOURCE QUEUE webuser1;
+DROP QUEUE
+DROP RESOURCE QUEUE mgmtuser1;
+DROP QUEUE
+DROP RESOURCE QUEUE mgmtuser2;
+DROP QUEUE
+DROP RESOURCE QUEUE mgmtuser3;
+DROP QUEUE
+DROP RESOURCE QUEUE mgmtuser4;
+DROP QUEUE
+DROP RESOURCE QUEUE mgmtuser5;
+DROP QUEUE
+DROP RESOURCE QUEUE mgmtuser6;
+DROP QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue;
+  rsqname   | rsqcountlimit | rsqcostlimit | rsqovercommit | rsqignorecostlimit 
+------------+---------------+--------------+---------------+--------------------
+ pg_default |            20 |           -1 | f             |                  0
+(1 row)
+

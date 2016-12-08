@@ -1,0 +1,68 @@
+--start_ignore
+revoke select on lineitem from max_0_pri_role;
+REVOKE
+revoke select on lineitem from min_0_pri_role;
+REVOKE
+revoke select on lineitem from min_1_pri_role;
+REVOKE
+revoke select on lineitem from min_2_pri_role;
+REVOKE
+revoke select on lineitem from min_3_pri_role;
+REVOKE
+drop user max_0_pri_role;
+DROP ROLE
+drop user min_0_pri_role;
+DROP ROLE
+drop user min_1_pri_role;
+DROP ROLE
+drop user min_2_pri_role;
+DROP ROLE
+drop user min_3_pri_role;
+DROP ROLE
+drop resource queue rq_max;
+DROP QUEUE
+drop resource queue rq_min;
+DROP QUEUE
+--end_ignore
+-- Creating resource queue rq_max
+create resource queue rq_max with (active_statements=100, priority=max);
+CREATE QUEUE
+-- Creating users with priority max
+create user max_0_pri_role with nosuperuser resource queue rq_max;
+CREATE ROLE
+alter user max_0_pri_role with resource queue rq_max;
+ALTER ROLE
+grant select on lineitem to max_0_pri_role;
+GRANT
+-- Creating resource queue rq_min
+create resource queue rq_min with (active_statements=100, priority=min);
+CREATE QUEUE
+-- Creating users with priority min
+create user min_0_pri_role with nosuperuser resource queue rq_min;
+CREATE ROLE
+alter user min_0_pri_role with resource queue rq_min;
+ALTER ROLE
+grant select on lineitem to min_0_pri_role;
+GRANT
+-- Creating users with priority min
+create user min_1_pri_role with nosuperuser resource queue rq_min;
+CREATE ROLE
+alter user min_1_pri_role with resource queue rq_min;
+ALTER ROLE
+grant select on lineitem to min_1_pri_role;
+GRANT
+-- Creating users with priority min
+create user min_2_pri_role with nosuperuser resource queue rq_min;
+CREATE ROLE
+alter user min_2_pri_role with resource queue rq_min;
+ALTER ROLE
+grant select on lineitem to min_2_pri_role;
+GRANT
+-- Creating users with priority min
+create user min_3_pri_role with nosuperuser resource queue rq_min;
+CREATE ROLE
+alter user min_3_pri_role with resource queue rq_min;
+ALTER ROLE
+grant select on lineitem to min_3_pri_role;
+GRANT
+

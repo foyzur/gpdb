@@ -1,0 +1,29 @@
+-- Test Workload Administration and Resource queuing
+
+-- create resource queue
+CREATE RESOURCE QUEUE myq11 ACTIVE THRESHOLD 10;
+CREATE QUEUE
+
+-- ALTER RESOURCE QUEUE
+ALTER RESOURCE QUEUE myq11 COST THRESHOLD 50.0;
+ALTER QUEUE
+ALTER RESOURCE QUEUE myq11 COST THRESHOLD 3e+7;
+ALTER QUEUE
+
+-- select from pg_resqueue table
+select * from pg_resqueue_status where rsqname='myq11';
+ rsqname | rsqcountlimit | rsqcountvalue | rsqcostlimit | rsqcostvalue | rsqwaiters | rsqholders 
+---------+---------------+---------------+--------------+--------------+------------+------------
+ myq11   |            10 |             0 |        3e+07 |            0 |          0 |          0
+(1 row)
+
+
+-- drop resource queue
+DROP RESOURCE QUEUE myq11;
+DROP QUEUE
+
+-- select from pg_resqueue_status table
+--select * from pg_resqueue_status;
+
+
+
