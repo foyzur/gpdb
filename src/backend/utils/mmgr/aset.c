@@ -222,7 +222,8 @@ static MemoryContextMethods AllocSetMethods = {
 	AllocSetGetChunkSpace,
 	AllocSetIsEmpty,
 	AllocSet_GetStats,
-	AllocSetReleaseAccountingForAllAllocatedChunks
+	AllocSetReleaseAccountingForAllAllocatedChunks,
+	AllocSetUpdateSharedHeader
 #ifdef MEMORY_CONTEXT_CHECKING
 	,AllocSetCheck
 #endif
@@ -845,6 +846,26 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 #ifdef CDB_PALLOC_TAGS
 	set->allocList = NULL;
 #endif
+}
+
+static void AllocSetUpdateSharedHeader(MemoryContext context, MemoryAccountIdType delta)
+{
+	AllocSet set = (AllocSet) context;
+
+	for (SharedChunkHeader* curHeader = set->sharedHeaderList; curHeader != NULL;
+			curHeader = curHeader->next)
+	{
+
+		if (curHeader->memoryAccountId >= MEMORY_OWNER_TYPE_START_SHORT_LIVING)
+		{
+			if (curHeader->memoryAccountId < liveAccountStartId)
+			{
+				curHeader->memoryAccountId = MEMORY_OWNER_TYPE_Rollover;
+			}
+
+			curHeader->memoryAccountId -= delta;
+		}
+	}
 }
 
 /*

@@ -804,6 +804,36 @@ MemoryContextStats(MemoryContext context)
     		currentAvailable, allAllocated, allFreed, maxHeld);
 }
 
+static void
+MemoryContextUpdateAccountId_recur(MemoryContext parent, MemoryAccountIdType delta)
+{
+	for (MemoryContext child = parent->firstchild; child != NULL; child = child->nextchild)
+	{
+		(*child->methods.update_account_id)(child, delta);
+		MemoryContextStats_recur(child, delta);
+	}
+}
+
+void
+MemoryContextUpdateAccountId(MemoryContext context, MemoryAccountIdType delta)
+{
+	AssertArg(MemoryContextIsValid(context));
+
+	(*context->methods.update_account_id)(context, delta);
+
+	MemoryContextUpdateAccountId_recur(context, delta);
+}
+
+void
+MemoryContextWalk_recur(MemoryContext parent, , void *args) {
+
+}
+
+void
+MemoryContextWalk(MemoryContext context, void (*op)(MemoryContext, void *) , void *args) {
+
+}
+
 /*
  * MemoryContextCheck
  *		Check all chunks in the named context.

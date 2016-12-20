@@ -591,6 +591,37 @@ AddToShortLivingAccountArray(MemoryAccount *newAccount)
 	shortLivingMemoryAccountArray->allAccounts[shortLivingMemoryAccountArray->accountCount++] = newAccount;
 }
 
+static
+MemoryAccountIdType ComputeDelta()
+{
+	// 100 max value
+	// 96 (live start), 97, 98, 99, 100, 0 (overflow) ->
+	// 96 => ShortStart, 97 => ShortStart + 1, ... nextAccountId = ...
+
+	// liveAccountStartId, nextAccountId, MEMORY_OWNER_TYPE_START_SHORT_LIVING
+
+	// 1. Compute the delta
+	return liveAccountStartId - MEMORY_OWNER_TYPE_START_SHORT_LIVING;
+	// 2. Adjust ID of all memory accounts in shortLivingMemoryAccountArray
+}
+
+static void
+AdjustAccountIds(MemoryAccountIdType delta)
+{
+//	typedef struct MemoryAccountArray{
+//		MemoryAccountIdType accountCount;
+//		MemoryAccountIdType arraySize;
+//		// array of pointers to memory accounts of size accountCount
+//		MemoryAccount** allAccounts;
+//	} MemoryAccountArray;
+//
+//	extern MemoryAccountArray* shortLivingMemoryAccountArray;
+
+	for(MemoryAccountIdType i; i < shortLivingMemoryAccountArray->accountCount; i++)
+	{
+
+	}
+ }
 /*
  * InitializeMemoryAccount
  *		Initialize the common data structures of a newly created memory account
@@ -630,6 +661,11 @@ InitializeMemoryAccount(MemoryAccount *newAccount, long maxLimit, MemoryOwnerTyp
 	else
 	{
 		newAccount->id = nextAccountId++;
+		if (nextAccountId == 0)
+		{
+			MemoryAccountIdType delta = ComputeDelta();
+			//MemoryContextUpdateAccountId()
+		}
 		AddToShortLivingAccountArray(newAccount);
 	}
 }
