@@ -142,6 +142,43 @@ InsertPidIntoDynamicTableScanInfo(EState *estate, int32 index, Oid partOid, int3
 }
 
 /*
+ * RemovePartSelectorForPartOid
+ * 		Un-endorse a partition oid for a given partition selector.
+ *
+ * 		Each partition selector endorses a partition oid that
+ * 		becomes chosen only if all available partition selectors
+ * 		vouch for that part oid for a given dynamic scan operator.
+ * 		This method removes the endorsement of one partition selector
+ * 		for a given partOid for a target partIndex.
+ */
+void
+RemovePartSelectorForPartOid(EState *estate, int32 index, Oid partOid, int32 selectorId)
+{
+	/* We should have inserted previously */
+	Assert(index <= estate->dynamicTableScanInfo->numScans);
+	Assert(estate->dynamicTableScanInfo->pidIndexes[index - 1] != NULL);
+
+	Assert(partOid != InvalidOid);
+	bool found = false;
+	PartOidEntry *hashEntry =
+		hash_search(estate->dynamicTableScanInfo->pidIndexes[index - 1],
+					&partOid, HASH_FIND, &found);
+
+	Assert(found);
+	Assert(hashEntry->partOid == partOid);
+	Assert(NULL != hashEntry->selectorList);
+	hashEntry->selectorList = list_delete_int(hashEntry->selectorList, selectorId);
+
+	if (hashEntry->selectorList == NULL)
+	{
+		found = false;
+		hash_search(estate->dynamicTableScanInfo->pidIndexes[index - 1],
+					&partOid, HASH_REMOVE, &found);
+		Assert(found);
+	}
+}
+
+/*
  * dumpDynamicTableScanPidIndex
  *   Write out pids for a given dynamic table scan.
  */
