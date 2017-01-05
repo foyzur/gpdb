@@ -165,17 +165,29 @@ RemovePartSelectorForPartOid(int32 index, Oid partOid, int32 selectorId)
 		hash_search(dynamicTableScanInfo->pidIndexes[index - 1],
 					&partOid, HASH_FIND, &found);
 
-	Assert(found);
-	Assert(hashEntry->partOid == partOid);
-	Assert(NULL != hashEntry->selectorList);
-	hashEntry->selectorList = list_delete_int(hashEntry->selectorList, selectorId);
-
-	if (hashEntry->selectorList == NULL)
+	/*
+	 * The PartitionSelector can give us same partition multiple times for the same
+	 * selector and scanId. However, when we insert such duplicates in the
+	 * pidIndexes hash table, we maintain an unique list of selector by using
+	 * list_append_unique_int(). Therefore, during deregistration, we cannot expect
+	 * that the entry would always exist. A duplicate entry may see the entry already
+	 * removed from the hash table. Therefore, we only attept to downvote (or remove
+	 * the selector from the list of selectors for an OID) if we find that OID in the
+	 * hash table
+	 */
+	if(found)
 	{
-		found = false;
-		hash_search(dynamicTableScanInfo->pidIndexes[index - 1],
-					&partOid, HASH_REMOVE, &found);
-		Assert(found);
+		Assert(hashEntry->partOid == partOid);
+		Assert(NULL != hashEntry->selectorList);
+		hashEntry->selectorList = list_delete_int(hashEntry->selectorList, selectorId);
+
+		if (hashEntry->selectorList == NULL)
+		{
+			found = false;
+			hash_search(dynamicTableScanInfo->pidIndexes[index - 1],
+						&partOid, HASH_REMOVE, &found);
+			Assert(found);
+		}
 	}
 }
 
