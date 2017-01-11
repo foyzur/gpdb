@@ -494,6 +494,7 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 	{
 		Assert (NULL != node->levelPartConstraints[level - 1]);
 		parentNode = node->levelPartConstraints[level - 1]->pRule->children;
+		elog(WARNING, "Rule: %x, PARENT: %x", node->levelPartConstraints[level - 1]->pRule, parentNode);
 	}
 
 	/* list of PartitionConstraints that satisfied the predicates */
@@ -527,9 +528,12 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 	 * level or propagate PartOids if we are in the leaf level
 	 */
 	ListCell* lc = NULL;
+	int loopCount = 0;
 	foreach (lc, satisfiedPartConstraints)
 	{
 		PartitionConstraints *partConstraint = (PartitionConstraints *) lfirst(lc);
+		//elog(WARNING, "Satisfied: %d, %d, %s", level, loopCount++, nodeToString(partConstraint));
+		elog(WARNING, "Satisfied: %d, %d", level, loopCount++);
 		node->levelPartConstraints[level] = partConstraint;
 		bool freeConstraint = true;
 
@@ -553,8 +557,17 @@ processLevel(PartitionSelectorState *node, int level, TupleTableSlot *inputTuple
 					if (!list_member_oid(selparts->partOids, partConstraint->pRule->parchildrelid))
 					{
 						selparts->partOids = lappend_oid(selparts->partOids, partConstraint->pRule->parchildrelid);
+						/*
+						 * So, one leaf can only be propagated to ONE scan id?? After we picked our partOid from
+						 * partConstraint->pRule->parchildrelid, we didn't modify any propagationExprState. We also
+						 * didn't touch econtext. However, we might still call a custom expression evaluation that
+						 * might be able to look into PartitionSelectorState, which has the partConstraint saved
+						 * per level (the latest partConstraint per level). But, how is it going to determine propagation
+						 * to multiple targets?
+						 */
 						int scanId = eval_propagation_expression(node, partConstraint->pRule->parchildrelid);
 						selparts->scanIds = lappend_int(selparts->scanIds, scanId);
+						elog(WARNING, "Propagating: %d, %x, %d, %d", level, selparts->partOids, scanId, partConstraint->pRule->parchildrelid);
 					}
 				}
 				else

@@ -175,7 +175,7 @@ RemovePartSelectorForPartOid(int32 index, Oid partOid, int32 selectorId)
 	 * the selector from the list of selectors for an OID) if we find that OID in the
 	 * hash table
 	 */
-	if(found)
+	Assert(found);
 	{
 		Assert(hashEntry->partOid == partOid);
 		Assert(NULL != hashEntry->selectorList);

@@ -20,6 +20,7 @@
 #include "executor/instrument.h"
 #include "executor/nodePartitionSelector.h"
 #include "utils/memutils.h"
+#include "cdb/cdbvars.h"
 
 static void
 ResetPrevSelParts(PartitionSelectorState *partSelState);
@@ -299,11 +300,26 @@ UndoPrevPropagation(PartitionSelectorState *partSelState)
 
 		ListCell *lcOid = NULL;
 		ListCell *lcScanId = NULL;
+
+		int i = 0;
 		forboth (lcOid, prevSelParts->partOids, lcScanId, prevSelParts->scanIds)
 		{
 			Oid partOid = lfirst_oid(lcOid);
 			int scanId = lfirst_int(lcScanId);
 
+			if (Gp_segment == 0 && currentSliceId == 1 && memory_profiler_dataset_size == 8)
+			{
+				if (i == 0)
+				{
+					elog(WARNING, "Begin");
+				}
+				elog(WARNING, "Seq, scanId, partOid, selectorId: %d, %d, %d. %d", i++, scanId, partOid, selectorId);
+
+				if (i == prevSelParts->partOids->length)
+				{
+					elog(WARNING, "END");
+				}
+			}
 			RemovePartSelectorForPartOid(scanId, partOid, selectorId);
 		}
 

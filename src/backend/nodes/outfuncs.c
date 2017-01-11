@@ -36,7 +36,7 @@
 #include "cdb/cdbgang.h"
 #include "utils/workfile_mgr.h"
 #include "parser/parsetree.h"
-
+#include "cdb/partitionselection.h"
 
 /*
  * outfuncs.c is compiled normally into outfuncs.o, but it's also
@@ -4226,6 +4226,21 @@ _outAlterTSDictionaryStmt(StringInfo str, AlterTSDictionaryStmt *node)
 	WRITE_NODE_FIELD(options);
 }
 
+static void
+_outPartitionConstraints(StringInfo str, PartitionConstraints *node)
+{
+	WRITE_NODE_TYPE("PARTITIONCONSTRAINTS");
+
+	WRITE_NODE_FIELD(pRule);
+	WRITE_BOOL_FIELD(defaultPart);
+	WRITE_NODE_FIELD(lowerBound);
+	WRITE_NODE_FIELD(upperBound);
+	WRITE_BOOL_FIELD(lbInclusive);
+	WRITE_BOOL_FIELD(upInclusive);
+	WRITE_BOOL_FIELD(lbOpen);
+	WRITE_BOOL_FIELD(upOpen);
+}
+
 #ifndef COMPILING_BINARY_FUNCS
 static void
 _outTupleDescNode(StringInfo str, TupleDescNode *node)
@@ -5129,6 +5144,9 @@ _outNode(StringInfo str, void *obj)
 				_outAlterTSDictionaryStmt(str, obj);
 				break;
 
+			case T_PartitionConstraints:
+				_outPartitionConstraints(str, obj);
+				break;
 			default:
 
 				/*
