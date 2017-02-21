@@ -354,6 +354,17 @@ _readPartListRuleExpr(void)
 	READ_DONE();
 }
 
+static PartListNullTestExpr *
+_readPartListNullTestExpr(void)
+{
+	READ_LOCALS(PartListNullTestExpr);
+
+	READ_INT_FIELD(level);
+	READ_ENUM_FIELD(nulltesttype, NullTestType);
+
+	READ_DONE();
+}
+
 /*
  *	Stuff from primnodes.h.
  */
@@ -3318,6 +3329,9 @@ readNodeBinary(void)
 				break;
 			case T_PartListRuleExpr:
 				return_value = _readPartListRuleExpr();
+				break;
+			case T_PartListNullTestExpr:
+				return_value = _readPartListNullTestExpr();
 				break;
 			case T_RowMarkClause:
 				return_value = _readRowMarkClause();
