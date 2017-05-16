@@ -1420,6 +1420,7 @@ typedef struct PlanState
 	 */
 	int		gpmon_plan_tick;
 	gpmon_packet_t gpmon_pkt;
+	TupleTableSlot* (*getNext)(struct PlanState *planstate);
 } PlanState;
 
 typedef struct Gpmon_NameUnit_MaxVal
@@ -1437,7 +1438,8 @@ typedef struct Gpmon_NameVal_Text
 
 /* Gpperfmon helper functions defined in execGpmon.h */
 extern char *GetScanRelNameGpmon(Oid relid, char schema_table_name[SCAN_REL_NAME_BUF_SIZE]);
-extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
+//extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
+#define CheckSendPlanStateGpmonPkt(ps)
 extern void EndPlanStateGpmonPkt(PlanState *ps);
 extern void InitPlanNodeGpmonPkt(Plan* plan, gpmon_packet_t *gpmon_pkt, EState *estate,
 								 PerfmonNodeType type, int64 rowsout_est,

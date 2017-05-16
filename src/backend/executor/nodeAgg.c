@@ -1316,9 +1316,25 @@ agg_retrieve_direct(AggState *aggstate)
 						break;
 					}
 
+					static instr_time total_time;
+					instr_time starttime, endtime;
+					static int command_count = 0;
+
+					if (command_count != gp_command_count)
+					{
+						command_count = gp_command_count;
+						INSTR_TIME_SET_ZERO(total_time);
+					}
+
+					INSTR_TIME_SET_CURRENT(starttime);
 					outerslot = ExecProcNode(outerPlan);
+					INSTR_TIME_SET_CURRENT(endtime);
+					INSTR_TIME_ACCUM_DIFF(total_time, endtime, starttime);
+
 					if (TupIsNull(outerslot))
 					{
+						elog(WARNING, "Agg Time for command_count %d: %.3f ms", command_count, INSTR_TIME_GET_MILLISEC(total_time));
+
 						/* no more outer-plan tuples avaiable */
 						aggstate->agg_done = true;
 						break;

@@ -89,7 +89,6 @@ extern PGDLLIMPORT volatile int32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(const char* filename, int lineno);
-extern void BackoffBackendTick(void);
 extern bool gp_enable_resqueue_priority;
 
 /*
@@ -124,8 +123,6 @@ do { \
 	}\
 	if (InterruptPending) \
 		ProcessInterrupts(__FILE__, __LINE__); \
-	if (gp_enable_resqueue_priority)	\
-		BackoffBackendTick(); \
 	ReportOOMConsumption(); \
 	RedZoneHandler_DetectRunawaySession();\
 } while(0)
@@ -134,8 +131,6 @@ do { \
 do { \
 	if (InterruptPending) \
 		ProcessInterrupts(__FILE__, __LINE__); \
-	if (gp_enable_resqueue_priority)	\
-		BackoffBackendTick(); \
 	ReportOOMConsumption(); \
 	RedZoneHandler_DetectRunawaySession();\
 } while(0)

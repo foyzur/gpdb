@@ -11,7 +11,8 @@
 #include "nodes/execnodes.h"
 
 extern SequenceState *ExecInitSequence(Sequence *node, EState *estate, int eflags);
-extern TupleTableSlot *ExecSequence(SequenceState *node);
+extern TupleTableSlot *ExecSequenceFirst(PlanState *node);
+extern TupleTableSlot *ExecSequenceLast(PlanState *node);
 extern void ExecReScanSequence(SequenceState *node, ExprContext *exprCtxt);
 extern void ExecEndSequence(SequenceState *node);
 extern int ExecCountSlotsSequence(Sequence *node);

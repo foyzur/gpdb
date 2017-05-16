@@ -17,6 +17,8 @@
 #include "executor/nodeSequence.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
+#include "portability/instr_time.h"
+#include "cdb/cdbvars.h"
 
 #define SEQUENCE_NSLOTS 1
 
@@ -30,6 +32,7 @@ ExecInitSequence(Sequence *node, EState *estate, int eflags)
 	Assert(node->plan.qual == NIL);
 
 	SequenceState *sequenceState = makeNode(SequenceState);
+	sequenceState->ps.getNext = ExecSequenceFirst;
 	
 	sequenceState->ps.plan = (Plan *)node;
 	sequenceState->ps.state = estate;
@@ -102,33 +105,71 @@ completeSubplan(PlanState *subplan)
 }
 
 TupleTableSlot *
-ExecSequence(SequenceState *node)
+ExecSequenceFirst(PlanState *ps)
 {
-	/*
-	 * If no subplan has been executed yet, execute them here, except for
-	 * the last subplan.
-	 */
-	if (node->initState)
+	SequenceState *node = (SequenceState *) ps;
+//	static instr_time total_time;
+//	instr_time starttime, endtime;
+//	static int command_count = 0;
+//
+//	if (command_count != gp_command_count)
+//	{
+//		command_count = gp_command_count;
+//		INSTR_TIME_SET_ZERO(total_time);
+//	}
+//	INSTR_TIME_SET_CURRENT(starttime);
+	for(int no = 0; no < node->numSubplans - 1; no++)
 	{
-		for(int no = 0; no < node->numSubplans - 1; no++)
-		{
-			completeSubplan(node->subplans[no]);
+		completeSubplan(node->subplans[no]);
 
-			CHECK_FOR_INTERRUPTS();
-		}
-
-		node->initState = false;
+		CHECK_FOR_INTERRUPTS();
 	}
 
+//	INSTR_TIME_SET_CURRENT(endtime);
+//	INSTR_TIME_SUBTRACT(endtime, starttime);
+//	elog(WARNING, "PartitionSelector Time for command_count %d: %.3f ms", command_count, INSTR_TIME_GET_MILLISEC(endtime));
+
+	node->initState = false;
+	node->ps.getNext = ExecSequenceLast;
+	/*
+	 * Return the tuple as returned by the subplan as-is. We do
+	 * NOT make use of the result slot that was set up in
+	 * ExecInitSequence, because there's no reason to.
+	 */
+	return ExecSequenceLast(ps);
+}
+
+TupleTableSlot *
+ExecSequenceLast(PlanState *ps)
+{
+	SequenceState *node = (SequenceState *) ps;
+
+//	static instr_time total_time;
+//	instr_time starttime, endtime;
+//	static int command_count = 0;
+//
+//	if (command_count != gp_command_count)
+//	{
+//		command_count = gp_command_count;
+//		INSTR_TIME_SET_ZERO(total_time);
+//	}
+
 	Assert(!node->initState);
-	
+
 	PlanState *lastPlan = node->subplans[node->numSubplans - 1];
+//	INSTR_TIME_SET_CURRENT(starttime);
 	TupleTableSlot *result = ExecProcNode(lastPlan);
-	
+//	INSTR_TIME_SET_CURRENT(endtime);
+//	INSTR_TIME_ACCUM_DIFF(total_time, endtime, starttime);
+
 	if (!TupIsNull(result))
 	{
 		Gpmon_M_Incr_Rows_Out(GpmonPktFromSequenceState(node));
 		CheckSendPlanStateGpmonPkt(&node->ps);
+	}
+	else
+	{
+//		elog(WARNING, "DTS Time for command_count %d: %.3f ms", command_count, INSTR_TIME_GET_MILLISEC(total_time));
 	}
 
 	/*

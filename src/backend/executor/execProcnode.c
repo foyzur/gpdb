@@ -983,170 +983,177 @@ ExecProcNode(PlanState *node)
 	if(!node->fHadSentGpmon)
 		CheckSendPlanStateGpmonPkt(node);
 
-	switch (nodeTag(node))
+	if (node->getNext)
 	{
-			/*
-			 * control nodes
-			 */
-		case T_ResultState:
-			result = ExecResult((ResultState *) node);
-			break;
+		result = node->getNext(node);
+	}
+	else
+	{
+		switch (nodeTag(node))
+		{
+				/*
+				 * control nodes
+				 */
+			case T_ResultState:
+				result = ExecResult((ResultState *) node);
+				break;
 
-		case T_AppendState:
-			result = ExecAppend((AppendState *) node);
-			break;
+			case T_AppendState:
+				result = ExecAppend((AppendState *) node);
+				break;
 
-		case T_SequenceState:
-			result = ExecSequence((SequenceState *) node);
-			break;
+			case T_SequenceState:
+				Insist(!"Sequence has its own calling mechanism");
+				break;
 
-			/* BitmapAndState does not yield tuples */
+				/* BitmapAndState does not yield tuples */
 
-			/* BitmapOrState does not yield tuples */
+				/* BitmapOrState does not yield tuples */
 
-			/*
-			 * scan nodes
-			 */
-		case T_TableScanState:
-			result = ExecTableScan((TableScanState *)node);
-			break;
+				/*
+				 * scan nodes
+				 */
+			case T_TableScanState:
+				result = ExecTableScan((TableScanState *)node);
+				break;
 
-		case T_DynamicTableScanState:
-			result = ExecDynamicTableScan((DynamicTableScanState *) node);
-			break;
+			case T_DynamicTableScanState:
+				result = ExecDynamicTableScan((DynamicTableScanState *) node);
+				break;
 
-		case T_ExternalScanState:
-			result = ExecExternalScan((ExternalScanState *) node);
-			break;
+			case T_ExternalScanState:
+				result = ExecExternalScan((ExternalScanState *) node);
+				break;
 
-		case T_IndexScanState:
-			result = ExecIndexScan((IndexScanState *) node);
-			break;
+			case T_IndexScanState:
+				result = ExecIndexScan((IndexScanState *) node);
+				break;
 
-		case T_DynamicIndexScanState:
-			result = ExecDynamicIndexScan((DynamicIndexScanState *) node);
-			break;
+			case T_DynamicIndexScanState:
+				result = ExecDynamicIndexScan((DynamicIndexScanState *) node);
+				break;
 
-			/* BitmapIndexScanState does not yield tuples */
+				/* BitmapIndexScanState does not yield tuples */
 
-		case T_BitmapHeapScanState:
-			result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
-			break;
+			case T_BitmapHeapScanState:
+				result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
+				break;
 
-		case T_BitmapAppendOnlyScanState:
-			result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
-			break;
+			case T_BitmapAppendOnlyScanState:
+				result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
+				break;
 
-		case T_BitmapTableScanState:
-			result = ExecBitmapTableScan((BitmapTableScanState *) node);
-			break;
+			case T_BitmapTableScanState:
+				result = ExecBitmapTableScan((BitmapTableScanState *) node);
+				break;
 
-		case T_TidScanState:
-			result = ExecTidScan((TidScanState *) node);
-			break;
+			case T_TidScanState:
+				result = ExecTidScan((TidScanState *) node);
+				break;
 
-		case T_SubqueryScanState:
-			result = ExecSubqueryScan((SubqueryScanState *) node);
-			break;
+			case T_SubqueryScanState:
+				result = ExecSubqueryScan((SubqueryScanState *) node);
+				break;
 
-		case T_FunctionScanState:
-			result = ExecFunctionScan((FunctionScanState *) node);
-			break;
+			case T_FunctionScanState:
+				result = ExecFunctionScan((FunctionScanState *) node);
+				break;
 
-		case T_TableFunctionState:
-			result = ExecTableFunction((TableFunctionState *) node);
-			break;
+			case T_TableFunctionState:
+				result = ExecTableFunction((TableFunctionState *) node);
+				break;
 
-		case T_ValuesScanState:
-			result = ExecValuesScan((ValuesScanState *) node);
-			break;
+			case T_ValuesScanState:
+				result = ExecValuesScan((ValuesScanState *) node);
+				break;
 
-			/*
-			 * join nodes
-			 */
-		case T_NestLoopState:
-			result = ExecNestLoop((NestLoopState *) node);
-			break;
+				/*
+				 * join nodes
+				 */
+			case T_NestLoopState:
+				result = ExecNestLoop((NestLoopState *) node);
+				break;
 
-		case T_MergeJoinState:
-			result = ExecMergeJoin((MergeJoinState *) node);
-			break;
+			case T_MergeJoinState:
+				result = ExecMergeJoin((MergeJoinState *) node);
+				break;
 
-		case T_HashJoinState:
-			result = ExecHashJoin((HashJoinState *) node);
-			break;
+			case T_HashJoinState:
+				result = ExecHashJoin((HashJoinState *) node);
+				break;
 
-			/*
-			 * materialization nodes
-			 */
-		case T_MaterialState:
-			result = ExecMaterial((MaterialState *) node);
-			break;
+				/*
+				 * materialization nodes
+				 */
+			case T_MaterialState:
+				result = ExecMaterial((MaterialState *) node);
+				break;
 
-		case T_SortState:
-			result = ExecSort((SortState *) node);
-			break;
+			case T_SortState:
+				result = ExecSort((SortState *) node);
+				break;
 
-		case T_AggState:
-			result = ExecAgg((AggState *) node);
-			break;
+			case T_AggState:
+				result = ExecAgg((AggState *) node);
+				break;
 
-		case T_UniqueState:
-			result = ExecUnique((UniqueState *) node);
-			break;
+			case T_UniqueState:
+				result = ExecUnique((UniqueState *) node);
+				break;
 
-		case T_HashState:
-			result = ExecHash((HashState *) node);
-			break;
+			case T_HashState:
+				result = ExecHash((HashState *) node);
+				break;
 
-		case T_SetOpState:
-			result = ExecSetOp((SetOpState *) node);
-			break;
+			case T_SetOpState:
+				result = ExecSetOp((SetOpState *) node);
+				break;
 
-		case T_LimitState:
-			result = ExecLimit((LimitState *) node);
-			break;
+			case T_LimitState:
+				result = ExecLimit((LimitState *) node);
+				break;
 
-		case T_MotionState:
-			result = ExecMotion((MotionState *) node);
-			break;
+			case T_MotionState:
+				result = ExecMotion((MotionState *) node);
+				break;
 
-		case T_ShareInputScanState:
-			result = ExecShareInputScan((ShareInputScanState *) node);
-			break;
+			case T_ShareInputScanState:
+				result = ExecShareInputScan((ShareInputScanState *) node);
+				break;
 
-		case T_WindowState:
-			result = ExecWindow((WindowState *) node);
-			break;
+			case T_WindowState:
+				result = ExecWindow((WindowState *) node);
+				break;
 
-		case T_RepeatState:
-			result = ExecRepeat((RepeatState *) node);
-			break;
+			case T_RepeatState:
+				result = ExecRepeat((RepeatState *) node);
+				break;
 
-		case T_DMLState:
-			result = ExecDML((DMLState *) node);
-			break;
+			case T_DMLState:
+				result = ExecDML((DMLState *) node);
+				break;
 
-		case T_SplitUpdateState:
-			result = ExecSplitUpdate((SplitUpdateState *) node);
-			break;
+			case T_SplitUpdateState:
+				result = ExecSplitUpdate((SplitUpdateState *) node);
+				break;
 
-		case T_RowTriggerState:
-			result = ExecRowTrigger((RowTriggerState *) node);
-			break;
+			case T_RowTriggerState:
+				result = ExecRowTrigger((RowTriggerState *) node);
+				break;
 
-		case T_AssertOpState:
-			result = ExecAssertOp((AssertOpState *) node);
-			break;
+			case T_AssertOpState:
+				result = ExecAssertOp((AssertOpState *) node);
+				break;
 
-		case T_PartitionSelectorState:
-			result = ExecPartitionSelector((PartitionSelectorState *) node);
-			break;
+			case T_PartitionSelectorState:
+				result = ExecPartitionSelector((PartitionSelectorState *) node);
+				break;
 
-		default:
-			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
-			result = NULL;
-			break;
+			default:
+				elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
+				result = NULL;
+				break;
+		}
 	}
 
 	if (node->instrument)

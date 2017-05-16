@@ -31,27 +31,6 @@ char * GetScanRelNameGpmon(Oid relid, char schema_rel_name[SCAN_REL_NAME_BUF_SIZ
 	return schema_rel_name;
 }
 
-void CheckSendPlanStateGpmonPkt(PlanState *ps)
-{
-	if(!ps)
-		return;
-
-	if(gp_enable_gpperfmon)
-	{
-		if(!ps->fHadSentGpmon || ps->gpmon_plan_tick != gpmon_tick)
-		{
-			if(ps->state && LocallyExecutingSliceIndex(ps->state) == currentSliceId)
-			{
-				gpmon_send(&ps->gpmon_pkt);
-			}
-			
-			ps->fHadSentGpmon = true;
-		}
-
-		ps->gpmon_plan_tick = gpmon_tick;
-	}
-}
-
 void EndPlanStateGpmonPkt(PlanState *ps)
 {
 	if(!ps)
