@@ -23,7 +23,7 @@
 #include "storage/fd.h"
 #include "utils/catcache.h"
 #include "utils/plancache.h"
-
+#include "storage/dsm.h"
 
 /*
  * ResourceOwner objects are an opaque data structure known only within
@@ -129,4 +129,10 @@ extern void ResourceOwnerRememberFile(ResourceOwner owner,
 extern void ResourceOwnerForgetFile(ResourceOwner owner,
 						File file);
 
+/* support for dynamic shared memory management */
+extern void ResourceOwnerEnlargeDSMs(ResourceOwner owner);
+extern void ResourceOwnerRememberDSM(ResourceOwner owner,
+						  dsm_segment *);
+extern void ResourceOwnerForgetDSM(ResourceOwner owner,
+						dsm_segment *);
 #endif   /* RESOWNER_H */
