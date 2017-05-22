@@ -30,7 +30,7 @@ struct shm_toc
 	Size		toc_total_bytes;		/* Bytes managed by this TOC */
 	Size		toc_allocated_bytes;	/* Bytes allocated of those managed */
 	Size		toc_nentry;				/* Number of entries in TOC */
-	shm_toc_entry toc_entry[FLEXIBLE_ARRAY_MEMBER];
+	shm_toc_entry toc_entry[1];
 };
 
 /*
