@@ -41,7 +41,7 @@
 #include "storage/lwlock.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
-#include "utils/resowner_private.h"
+#include "utils/resowner.h"
 
 #define PG_DYNSHMEM_STATE_FILE			PG_DYNSHMEM_DIR "/state"
 #define PG_DYNSHMEM_NEW_STATE_FILE		PG_DYNSHMEM_DIR "/state.new"
@@ -83,7 +83,7 @@ typedef struct dsm_control_header
 	uint32		magic;
 	uint32		nitems;
 	uint32		maxitems;
-	dsm_control_item	item[FLEXIBLE_ARRAY_MEMBER];
+	dsm_control_item	item[1];
 } dsm_control_header;
 
 static void dsm_cleanup_using_control_segment(void);

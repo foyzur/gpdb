@@ -90,23 +90,6 @@ static bool dsm_impl_mmap(dsm_op op, dsm_handle handle, uint64 request_size,
 #endif
 static int errcode_for_dynamic_shared_memory(void);
 
-const struct config_enum_entry dynamic_shared_memory_options[] = {
-#ifdef USE_DSM_POSIX
-	{ "posix", DSM_IMPL_POSIX, false},
-#endif
-#ifdef USE_DSM_SYSV
-	{ "sysv", DSM_IMPL_SYSV, false},
-#endif
-#ifdef USE_DSM_WINDOWS
-	{ "windows", DSM_IMPL_WINDOWS, false},
-#endif
-#ifdef USE_DSM_MMAP
-	{ "mmap", DSM_IMPL_MMAP, false},
-#endif
-	{ "none", DSM_IMPL_NONE, false},
-	{NULL, 0, false}
-};
-
 /* Implementation selector. */
 int dynamic_shared_memory_type;
 
