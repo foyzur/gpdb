@@ -687,5 +687,5 @@ extern const char *assign_xlog_sync_method(const char *method,
 						bool doit, GucSource source);
 
 extern StdRdOptions *defaultStdRdOptions(char relkind);
-
+extern int dynamic_shared_memory_type;
 #endif   /* GUC_H */

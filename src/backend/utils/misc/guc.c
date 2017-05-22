@@ -135,6 +135,8 @@ extern char *SSLCipherSuites;
 
 static const char *assign_log_destination(const char *value,
 					   bool doit, GucSource source);
+static const char *
+assign_dynamic_shared_memory_type(const char *newval, bool doit, GucSource source);
 
 #ifdef HAVE_SYSLOG
 static int	syslog_facility = LOG_LOCAL0;
@@ -246,6 +248,7 @@ char	   *application_name;
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
+static char *dynamic_shared_memory_type_str;
 int dynamic_shared_memory_type = DSM_IMPL_NONE;
 
 /*
@@ -2666,7 +2669,7 @@ static struct config_string ConfigureNamesString[] =
 			NULL,
 			GUC_IS_NAME | GUC_REPORT | GUC_NOT_IN_SAMPLE
 		},
-		&dynamic_shared_memory_type,
+		&dynamic_shared_memory_type_str,
 		"posix", assign_dynamic_shared_memory_type, NULL
 	},
 	/* End-of-list marker */
