@@ -223,6 +223,8 @@ char	   *memory_profiler_query_id = "none";
 int			memory_profiler_dataset_size = 0;
 bool		gp_dump_memory_usage = FALSE;
 
+int debug_segment_id = -1;
+int debug_slice_id = -1;
 
 #define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
 int			verify_checkpoint_interval =
@@ -4680,6 +4682,28 @@ struct config_int ConfigureNamesInt_gp[] =
 		0,
 #endif
 		0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"debug_segment_id", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Which segment to debug."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&debug_segment_id,
+		-1,
+		-1, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"debug_slice_id", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Minimum number of initial fixed length attributes in the table to generate code for deforming tuples."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+		},
+		&debug_slice_id,
+		-1,
+		-1, INT_MAX, NULL, NULL
 	},
 
 	{

@@ -1656,6 +1656,8 @@ static void AccumSliceReq(SliceReq * inv, SliceReq * req);
 static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 
+int **pid_map = NULL;
+int prev_num_slices = 0;
 
 /*
  * Function AssignGangs runs on the QD and finishes construction of the
@@ -1766,6 +1768,59 @@ AssignGangs(QueryDesc *queryDesc)
         inv.nxt1gang_primary_reader = 0;
         inv.nxt1gang_entrydb_reader = 0;
 		AssociateSlicesToProcesses(sliceMap, i, &inv);	/* An initPlan */
+	}
+
+	if (memory_profiler_dataset_size == 10)
+	{
+		if (debug_slice_id < nslices)
+		{
+			if (list_length(sliceMap[debug_slice_id]->primaryProcesses) >= debug_segment_id)
+			{
+				CdbProcess *proc = list_nth(sliceMap[debug_slice_id]->primaryProcesses, debug_segment_id);
+				elog(INFO, "Slice %d on Segment %d has PID: %d", debug_slice_id, debug_segment_id, proc->pid);
+			}
+			else
+			{
+				elog(INFO, "Don't have that many processes for segment: %d", debug_segment_id);
+			}
+		}
+		else
+		{
+			elog(INFO, "Don't have that many slices.");
+		}
+	}
+
+	int num_seg = getgpsegmentCount();
+
+	if (pid_map != NULL && prev_num_slices > 0 && memory_profiler_dataset_size == 10)
+	{
+//		elog(WARNING, "Slice %d on Segment %d has PID: %d", debug_slice_id, debug_segment_id, pid_map[debug_slice_id][debug_segment_id]);
+		for (int slice_idx = 0; slice_idx < prev_num_slices; slice_idx++)
+		{
+			pfree(pid_map[slice_idx]);
+		}
+		pfree(pid_map);
+		pid_map = NULL;
+	}
+
+	pid_map = MemoryContextAllocZero(TopMemoryContext, nslices * sizeof(int *));
+	for (int slice_idx = 0; slice_idx < nslices; slice_idx++)
+	{
+		pid_map[slice_idx] = MemoryContextAllocZero(TopMemoryContext, num_seg * sizeof(int));
+	}
+
+	prev_num_slices = nslices;
+
+	for (int slice_idx = 0; slice_idx < nslices; slice_idx++)
+	{
+		ListCell *lc;
+		int seg_idx = 0;
+		foreach(lc,  sliceMap[slice_idx]->primaryProcesses)
+		{
+			CdbProcess *proc = (CdbProcess *)lfirst(lc);
+			Assert(seg_idx < getgpsegmentCount());
+			pid_map[slice_idx][seg_idx++] = proc->pid;
+		}
 	}
 
 	/* Clean up */
