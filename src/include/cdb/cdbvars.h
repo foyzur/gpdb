@@ -938,6 +938,7 @@ extern bool coredump_on_memerror;
 
 extern int debug_segment_id;
 extern int debug_slice_id;
+extern int debug_pid;
 
 /* Autostats feature for MPP-4082. */
 typedef enum

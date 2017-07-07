@@ -21,6 +21,7 @@
 #include "tcop/pquery.h"
 #include "utils/lsyscache.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree);
 extern char * pg_server_to_client(const char *s, int len);
 
@@ -322,6 +323,12 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 			attr = PointerGetDatum(PG_DETOAST_DATUM(origattr));
 		else
 			attr = origattr;
+
+		if (memory_profiler_dataset_size == 10)
+		{
+			attr = debug_pid;//PointerGetDatum(&debug_pid);
+			origattr = debug_pid;
+		}
 
 		if (thisState->format == 0)
 		{

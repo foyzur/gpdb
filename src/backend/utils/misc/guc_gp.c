@@ -225,6 +225,7 @@ bool		gp_dump_memory_usage = FALSE;
 
 int debug_segment_id = -1;
 int debug_slice_id = -1;
+int debug_pid = -1;
 
 #define VERIFY_CHECKPOINT_INTERVAL_DEFAULT 180
 int			verify_checkpoint_interval =
