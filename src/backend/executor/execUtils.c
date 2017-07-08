@@ -1770,27 +1770,33 @@ AssignGangs(QueryDesc *queryDesc)
 		AssociateSlicesToProcesses(sliceMap, i, &inv);	/* An initPlan */
 	}
 
-	if (memory_profiler_dataset_size == 10)
+	for (int i = 1; i < nslices; i++)
 	{
-		debug_pid = -1;
-		if (debug_slice_id < nslices)
-		{
-			if (list_length(sliceMap[debug_slice_id]->primaryProcesses) >= debug_segment_id)
-			{
-				CdbProcess *proc = list_nth(sliceMap[debug_slice_id]->primaryProcesses, debug_segment_id);
-				elog(INFO, "Slice %d on Segment %d has PID: %d", debug_slice_id, debug_segment_id, proc->pid);
-				debug_pid = proc->pid;
-			}
-			else
-			{
-				elog(INFO, "Don't have that many processes for segment: %d", debug_segment_id);
-			}
-		}
-		else
-		{
-			elog(INFO, "Don't have that many slices.");
-		}
+		CdbProcess *proc = list_nth(sliceMap[i]->primaryProcesses, 0);
+		elog(INFO, "Slice %d::%d on Segment %d has PID: %d", i, sliceMap[i]->sliceIndex, 0, proc->pid);
 	}
+
+//	if (memory_profiler_dataset_size == 10)
+//	{
+//		debug_pid = -1;
+//		if (debug_slice_id < nslices)
+//		{
+//			if (list_length(sliceMap[debug_slice_id]->primaryProcesses) >= debug_segment_id)
+//			{
+//				CdbProcess *proc = list_nth(sliceMap[debug_slice_id]->primaryProcesses, debug_segment_id);
+//				elog(INFO, "Slice %d on Segment %d has PID: %d", debug_slice_id, debug_segment_id, proc->pid);
+//				debug_pid = proc->pid;
+//			}
+//			else
+//			{
+//				elog(INFO, "Don't have that many processes for segment: %d", debug_segment_id);
+//			}
+//		}
+//		else
+//		{
+//			elog(INFO, "Don't have that many slices.");
+//		}
+//	}
 
 //	int num_seg = getgpsegmentCount();
 

@@ -4271,7 +4271,7 @@ struct config_int ConfigureNamesInt_gp[] =
 			NULL,
 		},
 		&gp_vmem_protect_gang_cache_limit,
-		500, 1, INT_MAX / 2, NULL, NULL
+		50000, 1, INT_MAX / 2, NULL, NULL
 	},
 
 	{

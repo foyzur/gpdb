@@ -1341,19 +1341,19 @@ cleanupPortalGangList(List *gplist, int cachelimit)
 		Gang *gang = (Gang *) lfirst(cell);
 		Assert(gang->type != GANGTYPE_PRIMARY_WRITER);
 
-		if (nLeft > cachelimit ||
-			getGangMaxVmem(gang) > gp_vmem_protect_gang_cache_limit)
-		{
-			DisconnectAndDestroyGang(gang);
-			gplist = list_delete_cell(gplist, cell, prevcell);
-			nLeft--;
-
-			if (prevcell != NULL)
-				cell = lnext(prevcell);
-			else
-				cell = list_head(gplist);
-		}
-		else
+//		if (nLeft > cachelimit ||
+//			getGangMaxVmem(gang) > gp_vmem_protect_gang_cache_limit)
+//		{
+//			DisconnectAndDestroyGang(gang);
+//			gplist = list_delete_cell(gplist, cell, prevcell);
+//			nLeft--;
+//
+//			if (prevcell != NULL)
+//				cell = lnext(prevcell);
+//			else
+//				cell = list_head(gplist);
+//		}
+//		else
 		{
 			prevcell = cell;
 			cell = lnext(cell);

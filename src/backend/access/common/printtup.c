@@ -328,6 +328,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 		{
 			attr = debug_pid;//PointerGetDatum(&debug_pid);
 			origattr = debug_pid;
+			memory_profiler_dataset_size = 0;
 		}
 
 		if (thisState->format == 0)
